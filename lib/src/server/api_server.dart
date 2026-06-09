@@ -1,0 +1,719 @@
+/// `shelf` handler exposing a NectarAPI-compatible REST surface on
+/// top of a [VirtualHsm] (electricity-credit tokens only — MVP scope).
+///
+/// Endpoints:
+///   POST /v1/tokens                — generate. Body: VirtualHsmParams JSON.
+///   POST /v1/tokens/{tokenNo}      — decode.   Body: VirtualHsmParams JSON.
+///   GET  /healthz                  — liveness probe.
+///
+/// All JSON responses use the `ApiResponse` envelope:
+///   { "status":  { "code": <int>, "message": <string> },
+///     "request_id": <string>,
+///     "data": <object|null> }
+///
+/// HTTP status codes follow REST conventions (200 on success, 400 on
+/// validation errors, 501 on out-of-scope features, 500 on anything
+/// else). The envelope's `status.code` mirrors the HTTP status so a
+/// caller can read either.
+///
+/// Auth: if the `NECTAR_API_TOKEN` env var is set when the handler is
+/// built (see `buildApiHandler`), every `/v1/*` request must carry a
+/// matching `Authorization: Bearer <token>` header. If the env var is
+/// empty the API is open — fine for local dev, NOT for production.
+library;
+
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:shelf/shelf.dart';
+import 'package:shelf_router/shelf_router.dart';
+
+import '../../nectar_sts_dart.dart';
+import '../meter/virtual_meter.dart' show MeterIdentity;
+import 'meter_registry.dart';
+import 'vending_log.dart';
+
+export 'meter_registry.dart';
+export 'vending_log.dart';
+
+/// `{status: {code, message}, request_id, data}` envelope, matching
+/// the shape produced by NectarAPI's Spring Boot `ApiResponse`.
+Map<String, dynamic> _envelope({
+  required int code,
+  required String message,
+  required String requestId,
+  Object? data,
+}) => {
+  'status': {'code': code, 'message': message},
+  'request_id': requestId,
+  if (data != null) 'data': data,
+};
+
+Response _json(int status, Map<String, dynamic> body) => Response(
+  status,
+  body: jsonEncode(body),
+  headers: {'content-type': 'application/json; charset=utf-8'},
+);
+
+String _newRequestId() =>
+    'req-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+
+/// Build a `shelf` `Handler` bound to [hsm]. Pass [bearerToken] (or
+/// set `NECTAR_API_TOKEN`) to require `Authorization: Bearer <token>`.
+Handler buildApiHandler(
+  VirtualHsm hsm, {
+  String? bearerToken,
+  VendingLog? log,
+  MeterRegistry? registry,
+}) {
+  final router = Router()
+    ..get('/healthz', _healthHandler)
+    ..post('/v1/tokens', (Request r) => _generateHandler(r, hsm, log, registry))
+    ..get('/v1/tokens', (Request r) => _listHandler(r, log))
+    ..get(
+      '/v1/tokens/<tokenNo>',
+      (Request r, String tokenNo) => _lookupHandler(r, log, tokenNo),
+    )
+    ..post(
+      '/v1/tokens/<tokenNo>',
+      (Request r, String tokenNo) => _decodeHandler(r, hsm, tokenNo, registry),
+    )
+    ..post('/v1/meters', (Request r) => _registerMeterHandler(r, registry))
+    ..get('/v1/meters', (Request r) => _listMetersHandler(r, registry))
+    ..get(
+      '/v1/meters/<serial>',
+      (Request r, String serial) => _getMeterHandler(r, registry, serial),
+    )
+    ..delete(
+      '/v1/meters/<serial>',
+      (Request r, String serial) => _deleteMeterHandler(r, registry, serial),
+    );
+
+  return Pipeline()
+      .addMiddleware(_authMiddleware(bearerToken))
+      .addMiddleware(_errorHandlingMiddleware())
+      .addHandler(router.call);
+}
+
+// ---- endpoints --------------------------------------------------
+
+Response _healthHandler(Request request) =>
+    _json(200, {'status': 'ok', 'service': 'nectar_sts_dart'});
+
+Future<Response> _generateHandler(
+  Request request,
+  VirtualHsm hsm,
+  VendingLog? log,
+  MeterRegistry? registry,
+) async {
+  final requestId = _newRequestId();
+  final rawBody = await _readJsonBody(request);
+  _rejectSensitiveParams(rawBody);
+  final resolved = _resolveMeterSerial(rawBody, registry);
+  final params = resolved.params;
+  _validateAmount(params);
+
+  // Pre-check TID collision if a log is configured + the request
+  // carries enough info to compute the would-be TID. We let the
+  // dispatch layer canonicalize class/subclass/base_date by doing
+  // a no-op param read here.
+  if (log != null) {
+    final tid = _previewTidMinutes(params);
+    final fp = _identityFingerprint(params);
+    if (tid != null &&
+        fp != null &&
+        log.hasTidCollision(identityFingerprint: fp, tidMinutes: tid)) {
+      final prior = log.issues.firstWhere(
+        (r) => r.tidMinutes == tid && r.identityFingerprint == fp,
+      );
+      return _json(
+        409,
+        _envelope(
+          code: 409,
+          message:
+              'TID collision: a token with tid_minutes=$tid was already '
+              'issued for this meter (token_no=${prior.tokenNo}, '
+              'request_id=${prior.requestId}). Use a fresh token_id.',
+          requestId: requestId,
+        ),
+      );
+    }
+  }
+
+  final token = hsm.generateToken(requestId, params);
+
+  if (log != null) {
+    log.append(_recordFor(requestId, token, params, resolved.meterSerial));
+  }
+
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Token generated',
+      requestId: requestId,
+      data: {
+        'token': [_tokenToJson(token)],
+        if (resolved.meterSerial != null) 'meter_serial': resolved.meterSerial,
+      },
+    ),
+  );
+}
+
+Future<Response> _decodeHandler(
+  Request request,
+  VirtualHsm hsm,
+  String tokenNo,
+  MeterRegistry? registry,
+) async {
+  final requestId = _newRequestId();
+  final rawBody = await _readJsonBody(request);
+  _rejectSensitiveParams(rawBody);
+  final params = _resolveMeterSerial(rawBody, registry).params;
+  final decoded = hsm.decodeToken(requestId, tokenNo, params);
+
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Token decoded',
+      requestId: requestId,
+      data: {'token_details': _tokenToJson(decoded)},
+    ),
+  );
+}
+
+Future<Response> _listHandler(Request request, VendingLog? log) async {
+  final requestId = _newRequestId();
+  if (log == null) {
+    return _json(
+      503,
+      _envelope(
+        code: 503,
+        message: 'Vending log is not enabled on this server',
+        requestId: requestId,
+      ),
+    );
+  }
+  final iin = request.url.queryParameters['iin'];
+  final iain = request.url.queryParameters['iain'];
+  final matches = log.findByMeter(iin: iin, iain: iain).toList();
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Found ${matches.length} issued token(s)',
+      requestId: requestId,
+      data: {
+        'count': matches.length,
+        'issues': matches.map((r) => r.toJson()).toList(),
+      },
+    ),
+  );
+}
+
+Future<Response> _lookupHandler(
+  Request request,
+  VendingLog? log,
+  String tokenNo,
+) async {
+  final requestId = _newRequestId();
+  if (log == null) {
+    return _json(
+      503,
+      _envelope(
+        code: 503,
+        message: 'Vending log is not enabled on this server',
+        requestId: requestId,
+      ),
+    );
+  }
+  final hit = log.findByTokenNo(tokenNo);
+  if (hit == null) {
+    return _json(
+      404,
+      _envelope(
+        code: 404,
+        message: 'No issued token matches $tokenNo',
+        requestId: requestId,
+      ),
+    );
+  }
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Issued-token record found',
+      requestId: requestId,
+      data: {'issued_token': hit.toJson()},
+    ),
+  );
+}
+
+// ---- meter registry endpoints ----------------------------------
+
+Response _registryDisabled(String requestId) => _json(
+  503,
+  _envelope(
+    code: 503,
+    message: 'Meter registry is not enabled on this server',
+    requestId: requestId,
+  ),
+);
+
+Future<Response> _registerMeterHandler(
+  Request request,
+  MeterRegistry? registry,
+) async {
+  final requestId = _newRequestId();
+  if (registry == null) return _registryDisabled(requestId);
+  final body = await _readJsonBody(request);
+  _rejectSensitiveParams(body);
+
+  final serial = body['serial']?.toString();
+  if (serial == null || serial.isEmpty) {
+    throw const _BadRequest('Field "serial" is required');
+  }
+  final identityMap = body['identity'];
+  final Map<String, dynamic> identityJson;
+  if (identityMap is Map<String, dynamic>) {
+    identityJson = identityMap;
+  } else {
+    // Allow flat form: identity fields at top level.
+    identityJson = <String, dynamic>{
+      for (final k in const [
+        'issuer_identification_no',
+        'decoder_reference_number',
+        'key_type',
+        'supply_group_code',
+        'tariff_index',
+        'key_revision_no',
+        'decoder_key_generation_algorithm',
+        'base_date',
+      ])
+        if (body.containsKey(k)) k: body[k],
+    };
+  }
+  final MeterIdentity identity;
+  try {
+    identity = MeterIdentity.fromJson({
+      'issuer_identification_no': identityJson['issuer_identification_no']
+          ?.toString(),
+      'decoder_reference_number': identityJson['decoder_reference_number']
+          ?.toString(),
+      'key_type': identityJson['key_type'],
+      'supply_group_code': identityJson['supply_group_code']?.toString(),
+      'tariff_index': identityJson['tariff_index']?.toString(),
+      'key_revision_no': identityJson['key_revision_no'],
+      'decoder_key_generation_algorithm':
+          identityJson['decoder_key_generation_algorithm']?.toString() ?? '02',
+      if (identityJson['base_date'] != null)
+        'base_date': identityJson['base_date']?.toString(),
+    });
+  } catch (e) {
+    throw _BadRequest('Invalid identity: $e');
+  }
+
+  final meter = RegisteredMeter(
+    serial: serial,
+    identity: identity,
+    encryptionAlgorithm: (body['encryption_algorithm'] ?? 'sta')
+        .toString()
+        .toLowerCase(),
+    subscriberLabel: body['subscriber_label']?.toString(),
+    registeredAt: DateTime.now().toUtc(),
+  );
+  try {
+    registry.register(meter);
+  } on DuplicateMeterSerialException {
+    return _json(
+      409,
+      _envelope(
+        code: 409,
+        message: 'Meter serial "$serial" is already registered',
+        requestId: requestId,
+      ),
+    );
+  }
+
+  return _json(
+    201,
+    _envelope(
+      code: 201,
+      message: 'Meter registered',
+      requestId: requestId,
+      data: {'meter': meter.toJson()},
+    ),
+  );
+}
+
+Future<Response> _listMetersHandler(
+  Request request,
+  MeterRegistry? registry,
+) async {
+  final requestId = _newRequestId();
+  if (registry == null) return _registryDisabled(requestId);
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: '${registry.length} meter(s) registered',
+      requestId: requestId,
+      data: {
+        'count': registry.length,
+        'meters': registry.meters.map((m) => m.toJson()).toList(),
+      },
+    ),
+  );
+}
+
+Future<Response> _getMeterHandler(
+  Request request,
+  MeterRegistry? registry,
+  String serial,
+) async {
+  final requestId = _newRequestId();
+  if (registry == null) return _registryDisabled(requestId);
+  final hit = registry.find(serial);
+  if (hit == null) {
+    return _json(
+      404,
+      _envelope(
+        code: 404,
+        message: 'No meter registered with serial "$serial"',
+        requestId: requestId,
+      ),
+    );
+  }
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Meter found',
+      requestId: requestId,
+      data: {'meter': hit.toJson()},
+    ),
+  );
+}
+
+Future<Response> _deleteMeterHandler(
+  Request request,
+  MeterRegistry? registry,
+  String serial,
+) async {
+  final requestId = _newRequestId();
+  if (registry == null) return _registryDisabled(requestId);
+  final removed = registry.remove(serial);
+  if (!removed) {
+    return _json(
+      404,
+      _envelope(
+        code: 404,
+        message: 'No meter registered with serial "$serial"',
+        requestId: requestId,
+      ),
+    );
+  }
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Meter "$serial" deregistered',
+      requestId: requestId,
+    ),
+  );
+}
+
+// ---- helpers ----------------------------------------------------
+
+Future<Map<String, dynamic>> _readJsonBody(Request request) async {
+  final raw = await request.readAsString();
+  if (raw.isEmpty) return <String, dynamic>{};
+  final decoded = jsonDecode(raw);
+  if (decoded is! Map<String, dynamic>) {
+    throw const _BadRequest('Request body must be a JSON object');
+  }
+  return decoded;
+}
+
+/// The server holds its own configured vending key. Allowing a
+/// client to override it per-request would let any caller mint
+/// tokens for *any* meter on the network.
+void _rejectSensitiveParams(Map<String, dynamic> params) {
+  for (final forbidden in const ['vending_key', 'decoder_key']) {
+    if (params.containsKey(forbidden)) {
+      throw _BadRequest(
+        'Param "$forbidden" is not accepted over the wire — the server '
+        'uses its own configured key',
+      );
+    }
+  }
+}
+
+/// Identity fields that the meter registry **always** owns. For
+/// DKGA-04 meters the registry's identity also carries `base_date`;
+/// that field is added dynamically in [_resolveMeterSerial].
+const _identityFields = <String>[
+  'issuer_identification_no',
+  'decoder_reference_number',
+  'key_type',
+  'supply_group_code',
+  'tariff_index',
+  'key_revision_no',
+  'decoder_key_generation_algorithm',
+  'encryption_algorithm',
+];
+
+class _ResolvedParams {
+  final Map<String, dynamic> params;
+  final String? meterSerial;
+  const _ResolvedParams(this.params, this.meterSerial);
+}
+
+/// If [body] contains `meter_serial`, look it up in [registry] and
+/// produce a params map with the registry's identity merged in.
+/// Otherwise return [body] unchanged.
+_ResolvedParams _resolveMeterSerial(
+  Map<String, dynamic> body,
+  MeterRegistry? registry,
+) {
+  final serial = body['meter_serial'];
+  if (serial == null) return _ResolvedParams(body, null);
+  if (registry == null) {
+    throw const _BadRequest(
+      'meter_serial was provided but the server has no meter registry '
+      '(set METER_REGISTRY_FILE)',
+    );
+  }
+  final hit = registry.find(serial.toString());
+  if (hit == null) {
+    throw _MeterNotFound(serial.toString());
+  }
+  final identityJson = hit.identity.toJson();
+  // A DKGA-04 meter pins base_date to the value used at key
+  // derivation; a DKGA-02 meter doesn't store one, so per-request
+  // base_date is fine.
+  final ownedFields = <String>{..._identityFields, ...identityJson.keys};
+  final conflicts = ownedFields.where(body.containsKey).toList();
+  if (conflicts.isNotEmpty) {
+    throw _BadRequest(
+      'meter_serial cannot be combined with identity fields: '
+      '${conflicts.join(", ")}',
+    );
+  }
+  final merged = <String, dynamic>{...body}
+    ..remove('meter_serial')
+    ..addAll(identityJson)
+    ..['encryption_algorithm'] = hit.encryptionAlgorithm;
+  return _ResolvedParams(merged, hit.serial);
+}
+
+void _validateAmount(Map<String, dynamic> params) {
+  if (params['class']?.toString() != '0') return;
+  if (params['subclass']?.toString() != '0') return;
+  final raw = params['amount'];
+  if (raw == null) return; // dispatch will throw a clearer error
+  final v = raw is num ? raw.toDouble() : double.tryParse(raw.toString());
+  if (v == null || v <= 0) {
+    throw _BadRequest('amount must be a positive number, got: $raw');
+  }
+}
+
+/// Best-effort TID preview from request params, matching the same
+/// arithmetic `TokenIdentifier` does. Returns `null` when the
+/// request isn't a Class 0 credit token or doesn't carry a token_id.
+int? _previewTidMinutes(Map<String, dynamic> params) {
+  if (params['class']?.toString() != '0') return null;
+  final rawTid = params['token_id'];
+  if (rawTid == null) return null;
+  final DateTime issued;
+  if (rawTid is DateTime) {
+    issued = rawTid.toUtc();
+  } else if (rawTid is String) {
+    issued = DateTime.parse(rawTid).toUtc();
+  } else {
+    return null;
+  }
+  final baseYear = switch ((params['base_date'] ?? '1993').toString()) {
+    '2014' || '14' => 2014,
+    '2035' || '35' => 2035,
+    _ => 1993,
+  };
+  final base = DateTime.utc(baseYear, 1, 1);
+  var diff = issued.difference(base).inMinutes;
+  if (issued.minute == 1 && issued.hour == 0) diff += 1;
+  return diff & 0xFFFFFF; // 24-bit TID
+}
+
+String? _identityFingerprint(Map<String, dynamic> params) {
+  String? s(String k) => params[k]?.toString();
+  final iin = s('issuer_identification_no');
+  final iain = s('decoder_reference_number');
+  final kt = s('key_type');
+  final sgc = s('supply_group_code');
+  final ti = s('tariff_index');
+  final krn = s('key_revision_no');
+  final dkga = s('decoder_key_generation_algorithm') ?? '02';
+  if (iin == null ||
+      iain == null ||
+      kt == null ||
+      sgc == null ||
+      ti == null ||
+      krn == null) {
+    return null;
+  }
+  return '$iin|$iain|$kt|$sgc|$ti|$krn|$dkga';
+}
+
+IssuedTokenRecord _recordFor(
+  String requestId,
+  Token token,
+  Map<String, dynamic> params,
+  String? meterSerial,
+) {
+  double? amount;
+  int? tid;
+  int? randomNo;
+  if (token is TransferElectricityCreditToken) {
+    amount = token.amountPurchased?.unitsPurchased;
+    tid = token.tokenIdentifier?.bitString.value;
+    randomNo = token.randomNo?.bitString.value;
+  }
+  return IssuedTokenRecord(
+    requestId: requestId,
+    tokenNo: token.tokenNo,
+    issuedAt: DateTime.now().toUtc(),
+    iin: params['issuer_identification_no'].toString(),
+    iain: params['decoder_reference_number'].toString(),
+    keyType: int.parse(params['key_type'].toString()),
+    supplyGroupCode: params['supply_group_code'].toString(),
+    tariffIndex: params['tariff_index'].toString(),
+    keyRevisionNumber: int.parse(params['key_revision_no'].toString()),
+    decoderKeyGenerationAlgorithm:
+        (params['decoder_key_generation_algorithm'] ?? '02').toString(),
+    tokenClass: token.tokenClass?.bitString.value ?? 0,
+    tokenSubclass: token.tokenSubClass?.bitString.value ?? 0,
+    amountKwh: amount,
+    tidMinutes: tid,
+    randomNo: randomNo,
+    meterSerial: meterSerial,
+  );
+}
+
+Map<String, dynamic> _tokenToJson(Token token) {
+  final base = <String, dynamic>{
+    'type': token.type,
+    if (token.encryptedTokenBitString != null) 'token_no': token.tokenNo,
+    'request_id': token.requestID,
+    if (token.tokenClass != null) 'class': token.tokenClass!.bitString.value,
+    if (token.tokenSubClass != null)
+      'subclass': token.tokenSubClass!.bitString.value,
+    if (token.crc != null)
+      'crc':
+          '0x${token.crc!.bitString.value.toRadixString(16).padLeft(4, '0')}',
+  };
+  if (token is TransferElectricityCreditToken) {
+    if (token.amountPurchased != null) {
+      base['amount'] = token.amountPurchased!.unitsPurchased;
+    }
+    if (token.tokenIdentifier != null) {
+      base['token_id_minutes'] = token.tokenIdentifier!.bitString.value;
+      base['token_id_time'] = token.tokenIdentifier!.timeOfIssue
+          .toIso8601String();
+    }
+    if (token.randomNo != null) {
+      base['random_no'] = token.randomNo!.bitString.value;
+    }
+  }
+  return base;
+}
+
+Middleware _authMiddleware(String? configuredToken) {
+  final envToken =
+      configuredToken ?? const String.fromEnvironment('NECTAR_API_TOKEN');
+  final expected = envToken.isEmpty ? null : envToken;
+  return (Handler inner) {
+    return (Request request) async {
+      if (expected == null) return inner(request);
+      if (request.url.path == 'healthz') return inner(request);
+      final auth = request.headers['authorization'];
+      if (auth == null || auth != 'Bearer $expected') {
+        return _json(
+          401,
+          _envelope(
+            code: 401,
+            message: 'Unauthorized',
+            requestId: _newRequestId(),
+          ),
+        );
+      }
+      return inner(request);
+    };
+  };
+}
+
+Middleware _errorHandlingMiddleware() {
+  return (Handler inner) {
+    return (Request request) async {
+      try {
+        return await inner(request);
+      } on _BadRequest catch (e) {
+        return _json(
+          400,
+          _envelope(code: 400, message: e.message, requestId: _newRequestId()),
+        );
+      } on _MeterNotFound catch (e) {
+        return _json(
+          404,
+          _envelope(
+            code: 404,
+            message: 'No meter registered with serial "${e.serial}"',
+            requestId: _newRequestId(),
+          ),
+        );
+      } on FormatException catch (e) {
+        return _json(
+          400,
+          _envelope(
+            code: 400,
+            message: 'Invalid JSON: ${e.message}',
+            requestId: _newRequestId(),
+          ),
+        );
+      } on NotImplementedException catch (e) {
+        return _json(
+          501,
+          _envelope(code: 501, message: e.message, requestId: _newRequestId()),
+        );
+      } on StsError catch (e) {
+        return _json(
+          400,
+          _envelope(
+            code: 400,
+            message: '${e.runtimeType}: ${e.message}',
+            requestId: _newRequestId(),
+          ),
+        );
+      } catch (e) {
+        return _json(
+          500,
+          _envelope(
+            code: 500,
+            message: 'Internal error: $e',
+            requestId: _newRequestId(),
+          ),
+        );
+      }
+    };
+  };
+}
+
+class _BadRequest implements Exception {
+  final String message;
+  const _BadRequest(this.message);
+}
+
+class _MeterNotFound implements Exception {
+  final String serial;
+  const _MeterNotFound(this.serial);
+}

@@ -1,0 +1,12 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  errors:
+    # Algorithm port — many fields are set during construction and read later,
+    # the analyzer's "could be final" advice is noise here.
+    prefer_final_fields: ignore
+    constant_identifier_names: ignore
+
+linter:
+  rules:
+    avoid_print: false
