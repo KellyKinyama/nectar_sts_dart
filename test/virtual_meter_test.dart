@@ -141,7 +141,7 @@ void main() {
         // The on-disk JSON is human-inspectable and well-formed.
         final raw = await File(path).readAsString();
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
-        expect(decoded['schema'], 'nectar_sts_dart.virtual_meter/v1');
+        expect(decoded['schema'], 'nectar_sts_dart.virtual_meter/v2');
         expect(decoded['balance_kwh'], closeTo(9.0, 1e-9));
       } finally {
         await dir.delete(recursive: true);

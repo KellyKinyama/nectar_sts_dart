@@ -1,0 +1,466 @@
+import '../base/bit_string.dart';
+import '../domain/class2_payload.dart';
+import '../domain/class2_register_payloads.dart';
+import '../domain/primitives.dart';
+import '../domain/random_no.dart';
+import '../domain/token_class.dart';
+import '../domain/token_identifier.dart';
+import '../domain/token_subclass.dart';
+import 'token.dart';
+
+/// Marker base for all Class 2 (management / engineering) tokens.
+abstract class Class2Token extends Token {
+  Class2Token(super.requestID);
+}
+
+/// Common shape of the five Class 2 management tokens that follow the
+/// same 64-bit data block layout as Class 0 (only the 16-bit payload
+/// register differs):
+///
+///   bits  0..15   CRC                  (16)
+///   bits 16..31   <payload register>   (16)
+///   bits 32..55   TokenIdentifier      (24)
+///   bits 56..59   RandomNo             ( 4)
+///   bits 60..63   TokenSubClass        ( 4)
+///
+/// Subclasses override [registerBits] / [setRegisterBits] to plug in
+/// their payload-specific type.
+abstract class Class2RegisterToken extends Class2Token {
+  TokenIdentifier? tokenIdentifier;
+  RandomNo? randomNo;
+
+  Class2RegisterToken(super.requestID);
+
+  /// 16-bit payload register. Subclass-specific (Register / Pad /
+  /// Rate / MaximumPowerLimit / MaximumPhasePowerUnbalanceLimit).
+  BitString? get registerBits;
+  set registerBits(BitString? value);
+
+  TokenIdentifier extractTokenIdentifier(BitString decryptedDataBlock) =>
+      TokenIdentifier.fromBitString(decryptedDataBlock.extractBits(32, 24));
+
+  RandomNo extractRandomNo(BitString decryptedDataBlock) =>
+      RandomNo(decryptedDataBlock.extractBits(56, 4));
+
+  @override
+  void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
+    decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
+    checkCrc(decryptedDataBlock, tokenClass!);
+    crc = extractCrc(decryptedDataBlock);
+    registerBits = decryptedDataBlock.extractBits(16, 16);
+    tokenIdentifier = extractTokenIdentifier(decryptedDataBlock);
+    randomNo = extractRandomNo(decryptedDataBlock);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SetMaximumPowerLimit Token (Class 2 / SubClass 0x0)
+// ---------------------------------------------------------------------------
+
+/// Tells the meter to clamp the customer's instantaneous power draw
+/// to the carried [maximumPowerLimit] (a 16-bit unsigned value).
+class SetMaximumPowerLimitToken extends Class2RegisterToken {
+  MaximumPowerLimit? maximumPowerLimit;
+
+  SetMaximumPowerLimitToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Set Maximum Power Limit');
+    tokenSubClass = TokenSubClass.setMaximumPowerLimit();
+  }
+
+  @override
+  String get type => 'SetMaximumPowerLimit_20';
+
+  @override
+  BitString? get registerBits => maximumPowerLimit?.bitString;
+
+  @override
+  set registerBits(BitString? value) {
+    maximumPowerLimit = value == null
+        ? null
+        : MaximumPowerLimit.fromBitString(value);
+  }
+
+  factory SetMaximumPowerLimitToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = SetMaximumPowerLimitToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ClearCredit Token (Class 2 / SubClass 0x1)
+// ---------------------------------------------------------------------------
+
+/// Tells the meter to reset its credit balance. The 16-bit
+/// [register] field carries an optional snapshot value the meter
+/// writes into the post-clear counter (commonly 0).
+class ClearCreditToken extends Class2RegisterToken {
+  Register? register;
+
+  ClearCreditToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Clear Credit');
+    tokenSubClass = TokenSubClass.clearCredit();
+  }
+
+  @override
+  String get type => 'ClearCredit_21';
+
+  @override
+  BitString? get registerBits => register?.bitString;
+
+  @override
+  set registerBits(BitString? value) {
+    register = value == null ? null : Register(value);
+  }
+
+  factory ClearCreditToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = ClearCreditToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SetTariffRate Token (Class 2 / SubClass 0x2)
+// ---------------------------------------------------------------------------
+
+/// Tells the meter to switch to the carried 16-bit tariff [rate].
+class SetTariffRateToken extends Class2RegisterToken {
+  Rate? rate;
+
+  SetTariffRateToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Set Tariff Rate');
+    tokenSubClass = TokenSubClass.setTariffRate();
+  }
+
+  @override
+  String get type => 'SetTariffRate_22';
+
+  @override
+  BitString? get registerBits => rate?.bitString;
+
+  @override
+  set registerBits(BitString? value) {
+    rate = value == null ? null : Rate(value);
+  }
+
+  factory SetTariffRateToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = SetTariffRateToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1st Section Decoder Key Change Token (Class 2 / SubClass 0x3)
+// ---------------------------------------------------------------------------
+
+/// Conveys the high-order 32 bits of a new decoder key together with
+/// the new Key Type, the high nibble of the new Key Expiry Number,
+/// the new Key Revision Number and the Rollover Key Change flag.
+///
+/// 64-bit decrypted data block layout (LSB-first):
+///
+///   bits  0..15   CRC                                 (16)
+///   bits 16..47   NewKeyHighOrder (NKHO)              (32)
+///   bits 48..49   KeyType                             ( 2)
+///   bit   50      _3KCT (reserved, 0 for 64-bit KCT)  ( 1)
+///   bit   51      RolloverKeyChange (RO)              ( 1)
+///   bits 52..55   KeyRevisionNumber (new KRN)         ( 4)
+///   bits 56..59   KeyExpiryNumberHighOrder (KENHO)    ( 4)
+///   bits 60..63   TokenSubClass = 0x3                 ( 4)
+///
+/// Must always be applied as a pair with [Set2ndSectionDecoderKeyToken].
+class Set1stSectionDecoderKeyToken extends Class2Token {
+  KeyExpiryNumberHighOrder? keyExpiryNumberHighOrder;
+  KeyRevisionNumber? keyRevisionNumber;
+  RolloverKeyChange? rolloverKeyChange;
+  KeyType? keyType;
+  NewKeyHighOrder? newKeyHighOrder;
+  Reserved3Kct? reserved3Kct;
+
+  Set1stSectionDecoderKeyToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Set 1st Section Decoder Key');
+    tokenSubClass = TokenSubClass.set1stSectionDecoderKey();
+    reserved3Kct = Reserved3Kct.zero();
+  }
+
+  @override
+  String get type => 'Set1stSectionDecoderKey_23';
+
+  @override
+  void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
+    decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
+    checkCrc(decryptedDataBlock, tokenClass!);
+    crc = extractCrc(decryptedDataBlock);
+
+    newKeyHighOrder = NewKeyHighOrder(decryptedDataBlock.extractBits(16, 32));
+    keyType = KeyType(decryptedDataBlock.extractBits(48, 2).value);
+    reserved3Kct = Reserved3Kct(decryptedDataBlock.extractBits(50, 1));
+    rolloverKeyChange = RolloverKeyChange(
+      decryptedDataBlock.extractBits(51, 1),
+    );
+    keyRevisionNumber = KeyRevisionNumber(
+      decryptedDataBlock.extractBits(52, 4).value,
+    );
+    keyExpiryNumberHighOrder = KeyExpiryNumberHighOrder(
+      decryptedDataBlock.extractBits(56, 4),
+    );
+  }
+
+  factory Set1stSectionDecoderKeyToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = Set1stSectionDecoderKeyToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2nd Section Decoder Key Change Token (Class 2 / SubClass 0x4)
+// ---------------------------------------------------------------------------
+
+/// Conveys the low-order 32 bits of a new decoder key together with
+/// the new Tariff Index and the low nibble of the new KEN.
+///
+/// 64-bit decrypted data block layout (LSB-first):
+///
+///   bits  0..15   CRC                                 (16)
+///   bits 16..47   NewKeyLowOrder (NKLO)               (32)
+///   bits 48..55   TariffIndex (8-bit binary form)     ( 8)
+///   bits 56..59   KeyExpiryNumberLowOrder (KENLO)     ( 4)
+///   bits 60..63   TokenSubClass = 0x4                 ( 4)
+class Set2ndSectionDecoderKeyToken extends Class2Token {
+  KeyExpiryNumberLowOrder? keyExpiryNumberLowOrder;
+  TariffIndex? tariffIndex;
+  NewKeyLowOrder? newKeyLowOrder;
+
+  Set2ndSectionDecoderKeyToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Set 2nd Section Decoder Key');
+    tokenSubClass = TokenSubClass.set2ndSectionDecoderKey();
+  }
+
+  @override
+  String get type => 'Set2ndSectionDecoderKey_24';
+
+  @override
+  void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
+    decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
+    checkCrc(decryptedDataBlock, tokenClass!);
+    crc = extractCrc(decryptedDataBlock);
+
+    newKeyLowOrder = NewKeyLowOrder(decryptedDataBlock.extractBits(16, 32));
+    final tiBits = decryptedDataBlock.extractBits(48, 8).value;
+    tariffIndex = TariffIndex(tiBits.toString().padLeft(2, '0'));
+    keyExpiryNumberLowOrder = KeyExpiryNumberLowOrder(
+      decryptedDataBlock.extractBits(56, 4),
+    );
+  }
+
+  factory Set2ndSectionDecoderKeyToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = Set2ndSectionDecoderKeyToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ClearTamperCondition Token (Class 2 / SubClass 0x5)
+// ---------------------------------------------------------------------------
+
+/// Tells the meter to clear any latched tamper-detection flags. The
+/// 16-bit [pad] field is just nonce padding.
+class ClearTamperConditionToken extends Class2RegisterToken {
+  Pad? pad;
+
+  ClearTamperConditionToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Clear Tamper Condition');
+    tokenSubClass = TokenSubClass.clearTamperCondition();
+  }
+
+  @override
+  String get type => 'ClearTamperCondition_25';
+
+  @override
+  BitString? get registerBits => pad?.bitString;
+
+  @override
+  set registerBits(BitString? value) {
+    pad = value == null ? null : Pad(value);
+  }
+
+  factory ClearTamperConditionToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = ClearTamperConditionToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SetMaximumPhasePowerUnbalanceLimit Token (Class 2 / SubClass 0x6)
+// ---------------------------------------------------------------------------
+
+/// Tells the meter to clamp the inter-phase power unbalance to the
+/// carried 16-bit [maximumPhasePowerUnbalanceLimit] (commonly a
+/// percentage).
+class SetMaximumPhasePowerUnbalanceLimitToken extends Class2RegisterToken {
+  MaximumPhasePowerUnbalanceLimit? maximumPhasePowerUnbalanceLimit;
+
+  SetMaximumPhasePowerUnbalanceLimitToken(super.requestID) {
+    tokenClass = TokenClass.engineering(
+      'Set Maximum Phase Power Unbalance Limit',
+    );
+    tokenSubClass = TokenSubClass.setMaximumPhasePowerUnbalanceLimit();
+  }
+
+  @override
+  String get type => 'SetMaximumPhasePowerUnbalanceLimit_26';
+
+  @override
+  BitString? get registerBits => maximumPhasePowerUnbalanceLimit?.bitString;
+
+  @override
+  set registerBits(BitString? value) {
+    maximumPhasePowerUnbalanceLimit = value == null
+        ? null
+        : MaximumPhasePowerUnbalanceLimit.fromBitString(value);
+  }
+
+  factory SetMaximumPhasePowerUnbalanceLimitToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = SetMaximumPhasePowerUnbalanceLimitToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3rd Section Decoder Key Change Token (Class 2 / SubClass 0x8)
+// ---------------------------------------------------------------------------
+
+/// Conveys bits 32..63 (`NewKeyMiddleOrder2`) of a 128-bit MISTY1
+/// decoder key together with the low-order 12 bits of a new Supply
+/// Group Code.
+///
+/// 64-bit decrypted data block layout (LSB-first):
+///
+///   bits  0..15   CRC                                 (16)
+///   bits 16..47   NewKeyMiddleOrder2 (NKMO2)          (32)
+///   bits 48..59   SupplyGroupCodeLowOrder (SGCLO)     (12)
+///   bits 60..63   TokenSubClass = 0x8                 ( 4)
+///
+/// Must always be applied as part of a 4-token set together with the
+/// 1st, 2nd and 4th Section KCTs (MISTY1 path only).
+class Set3rdSectionDecoderKeyToken extends Class2Token {
+  SupplyGroupCodeLowOrder? supplyGroupCodeLowOrder;
+  NewKeyMiddleOrder2? newKeyMiddleOrder2;
+
+  Set3rdSectionDecoderKeyToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Set 3rd Section Decoder Key');
+    tokenSubClass = TokenSubClass.set3rdSectionDecoderKey();
+  }
+
+  @override
+  String get type => 'Set3rdSectionDecoderKey_28';
+
+  @override
+  void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
+    decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
+    checkCrc(decryptedDataBlock, tokenClass!);
+    crc = extractCrc(decryptedDataBlock);
+
+    newKeyMiddleOrder2 = NewKeyMiddleOrder2(
+      decryptedDataBlock.extractBits(16, 32),
+    );
+    supplyGroupCodeLowOrder = SupplyGroupCodeLowOrder(
+      decryptedDataBlock.extractBits(48, 12),
+    );
+  }
+
+  factory Set3rdSectionDecoderKeyToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = Set3rdSectionDecoderKeyToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4th Section Decoder Key Change Token (Class 2 / SubClass 0x9)
+// ---------------------------------------------------------------------------
+
+/// Conveys bits 64..95 (`NewKeyMiddleOrder1`) of a 128-bit MISTY1
+/// decoder key together with the high-order 12 bits of a new Supply
+/// Group Code.
+///
+/// 64-bit decrypted data block layout (LSB-first):
+///
+///   bits  0..15   CRC                                 (16)
+///   bits 16..47   NewKeyMiddleOrder1 (NKMO1)          (32)
+///   bits 48..59   SupplyGroupCodeHighOrder (SGCHO)    (12)
+///   bits 60..63   TokenSubClass = 0x9                 ( 4)
+class Set4thSectionDecoderKeyToken extends Class2Token {
+  SupplyGroupCodeHighOrder? supplyGroupCodeHighOrder;
+  NewKeyMiddleOrder1? newKeyMiddleOrder1;
+
+  Set4thSectionDecoderKeyToken(super.requestID) {
+    tokenClass = TokenClass.engineering('Set 4th Section Decoder Key');
+    tokenSubClass = TokenSubClass.set4thSectionDecoderKey();
+  }
+
+  @override
+  String get type => 'Set4thSectionDecoderKey_29';
+
+  @override
+  void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
+    decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
+    checkCrc(decryptedDataBlock, tokenClass!);
+    crc = extractCrc(decryptedDataBlock);
+
+    newKeyMiddleOrder1 = NewKeyMiddleOrder1(
+      decryptedDataBlock.extractBits(16, 32),
+    );
+    supplyGroupCodeHighOrder = SupplyGroupCodeHighOrder(
+      decryptedDataBlock.extractBits(48, 12),
+    );
+  }
+
+  factory Set4thSectionDecoderKeyToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = Set4thSectionDecoderKeyToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    return t;
+  }
+}

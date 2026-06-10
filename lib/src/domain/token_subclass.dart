@@ -44,6 +44,26 @@ class TokenSubClass {
   factory TokenSubClass.initiateMeterTestDisplay2() =>
       TokenSubClass._(1, 'InitiateMeterTestDisplay2');
 
+  // Class 2 sub-classes (engineering / management). Numeric values
+  // match the upstream Java `tokensubclass.class2.*` constants.
+  factory TokenSubClass.setMaximumPowerLimit() =>
+      TokenSubClass._(0x0, 'SetMaximumPowerLimit');
+  factory TokenSubClass.clearCredit() => TokenSubClass._(0x1, 'ClearCredit');
+  factory TokenSubClass.setTariffRate() =>
+      TokenSubClass._(0x2, 'SetTariffRate');
+  factory TokenSubClass.set1stSectionDecoderKey() =>
+      TokenSubClass._(0x3, 'Set1stSectionDecoderKey');
+  factory TokenSubClass.set2ndSectionDecoderKey() =>
+      TokenSubClass._(0x4, 'Set2ndSectionDecoderKey');
+  factory TokenSubClass.clearTamperCondition() =>
+      TokenSubClass._(0x5, 'ClearTamperCondition');
+  factory TokenSubClass.setMaximumPhasePowerUnbalanceLimit() =>
+      TokenSubClass._(0x6, 'SetMaximumPhasePowerUnbalanceLimit');
+  factory TokenSubClass.set3rdSectionDecoderKey() =>
+      TokenSubClass._(0x8, 'Set3rdSectionDecoderKey');
+  factory TokenSubClass.set4thSectionDecoderKey() =>
+      TokenSubClass._(0x9, 'Set4thSectionDecoderKey');
+
   @override
   String toString() => bitString.toString();
 }

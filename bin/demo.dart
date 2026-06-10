@@ -154,6 +154,179 @@ void main(List<String> args) {
     '@ ${paramsDecoded.tokenIdentifier!.bitString.value} min',
   );
   print('');
+
+  // 6. Class 2 / SubClass 3+4 — STA Decoder Key Change Token pair.
+  //    Mint a new decoder key (DKGA-02 with the next KRN) and ship it
+  //    to the meter as a 1st + 2nd section pair, encrypted under the
+  //    *current* decoder key. The meter would stage these halves, then
+  //    rotate to the new key when both have arrived.
+  print('--- Class 2 KCT (STA, 1st + 2nd section) -----------------');
+  final newKeyStaSta = hsm.deriveDecoderKeyDkga02(
+    issuerIdentificationNumber: iin,
+    individualAccountIdentificationNumber: iain,
+    keyType: keyType,
+    supplyGroupCode: sgc,
+    tariffIndex: TariffIndex('08'),
+    keyRevisionNumber: KeyRevisionNumber(2),
+  );
+  print(
+    'New decoder key: '
+    '${newKeyStaSta.keyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}'
+    ' (DKGA-02, KRN=2, TI=08)',
+  );
+
+  final kct1 = Set1stSectionDecoderKeyTokenGenerator(
+    decoderKey: decoderKey,
+    encryptionAlgorithm: ea07,
+    keyExpiryNumberHighOrder: KeyExpiryNumberHighOrder(
+      BitString.fromValue(0xA, 4),
+    ),
+    keyRevisionNumber: KeyRevisionNumber(2),
+    rolloverKeyChange: RolloverKeyChange.fromBool(false),
+    keyType: KeyType(2),
+    newDecoderKey: newKeyStaSta,
+  ).generateNew('${opts.requestID}.kct.1st');
+  final kct2 = Set2ndSectionDecoderKeyTokenGenerator(
+    decoderKey: decoderKey,
+    encryptionAlgorithm: ea07,
+    keyExpiryNumberLowOrder: KeyExpiryNumberLowOrder(
+      BitString.fromValue(0xB, 4),
+    ),
+    tariffIndex: TariffIndex('08'),
+    newDecoderKey: newKeyStaSta,
+  ).generateNew('${opts.requestID}.kct.2nd');
+
+  print('1st section token: ${_formatToken(kct1.tokenNo)}');
+  print('2nd section token: ${_formatToken(kct2.tokenNo)}');
+
+  // Decode both halves and confirm we can rebuild the new key bit-exactly.
+  final class2Dec = Class2TokenDecoder(decoderKey, ea07);
+  final d1 =
+      class2Dec.decodeBinary66(
+            '${opts.requestID}.kct.1st.dec',
+            kct1.encryptedTokenBitString!,
+          )
+          as Set1stSectionDecoderKeyToken;
+  final d2 =
+      class2Dec.decodeBinary66(
+            '${opts.requestID}.kct.2nd.dec',
+            kct2.encryptedTokenBitString!,
+          )
+          as Set2ndSectionDecoderKeyToken;
+  final rebuilt = combineStaDecoderKey(d1.newKeyHighOrder!, d2.newKeyLowOrder!);
+  print(
+    'Rebuilt new key: '
+    '${rebuilt.keyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()} '
+    '(${rebuilt.keyData.length == newKeyStaSta.keyData.length && _bytesEqual(rebuilt.keyData, newKeyStaSta.keyData) ? 'MATCH' : 'MISMATCH'})',
+  );
+  print('');
+
+  // 7. Class 2 / SubClass 3+4+8+9 — MISTY1 KCT, full 4-section flow.
+  //    MISTY1 carries a 128-bit decoder key, so the rotation needs all
+  //    four sections (1st = NKHO, 2nd = NKLO, 3rd = NKMO2 + SGCLO,
+  //    4th = NKMO1 + SGCHO). Derive both the current and the new key
+  //    via DKGA-04 + MISTY1, then mint and decode all four halves.
+  print('--- Class 2 KCT (MISTY1, full 4-section) -----------------');
+  final vendingKey160 = VendingCommonDesKey(
+    parseHexKey('0123456789ABCDEF0123456789ABCDEF01234567'),
+  );
+  final dkga04 = ({required int krn, required String ti}) =>
+      DecoderKeyGeneratorAlgorithm04(
+        baseDate: BaseDate.date1993,
+        tariffIndex: TariffIndex(ti),
+        supplyGroupCode: sgc,
+        keyType: keyType,
+        keyRevisionNumber: KeyRevisionNumber(krn),
+        encryptionAlgorithm: Misty1EncryptionAlgorithm(),
+        meterPan: MeterPrimaryAccountNumber(
+          issuerIdentificationNumber: iin,
+          individualAccountIdentificationNumber: iain,
+        ),
+        vendingKey: vendingKey160,
+      ).generate();
+  final misty1Cur = dkga04(krn: 1, ti: '07');
+  final misty1New = dkga04(krn: 2, ti: '08');
+  final misty1Ea = Misty1EncryptionAlgorithm();
+  print(
+    'Current MISTY1 key (16B): '
+    '${misty1Cur.keyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}',
+  );
+  print(
+    'New MISTY1 key     (16B): '
+    '${misty1New.keyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}',
+  );
+
+  final t1 = Set1stSectionDecoderKeyTokenGenerator(
+    decoderKey: misty1Cur,
+    encryptionAlgorithm: misty1Ea,
+    keyExpiryNumberHighOrder: KeyExpiryNumberHighOrder(
+      BitString.fromValue(0xA, 4),
+    ),
+    keyRevisionNumber: KeyRevisionNumber(2),
+    rolloverKeyChange: RolloverKeyChange.fromBool(false),
+    keyType: KeyType(2),
+    newDecoderKey: misty1New,
+  ).generateNew('${opts.requestID}.misty1.1');
+  final t2 = Set2ndSectionDecoderKeyTokenGenerator(
+    decoderKey: misty1Cur,
+    encryptionAlgorithm: misty1Ea,
+    keyExpiryNumberLowOrder: KeyExpiryNumberLowOrder(
+      BitString.fromValue(0xB, 4),
+    ),
+    tariffIndex: TariffIndex('08'),
+    newDecoderKey: misty1New,
+  ).generateNew('${opts.requestID}.misty1.2');
+  final t3 = Set3rdSectionDecoderKeyTokenGenerator(
+    decoderKey: misty1Cur,
+    encryptionAlgorithm: misty1Ea,
+    supplyGroupCode: sgc,
+    newDecoderKey: misty1New,
+  ).generateNew('${opts.requestID}.misty1.3');
+  final t4 = Set4thSectionDecoderKeyTokenGenerator(
+    decoderKey: misty1Cur,
+    encryptionAlgorithm: misty1Ea,
+    supplyGroupCode: sgc,
+    newDecoderKey: misty1New,
+  ).generateNew('${opts.requestID}.misty1.4');
+
+  print('1st section token: ${_formatToken(t1.tokenNo)}');
+  print('2nd section token: ${_formatToken(t2.tokenNo)}');
+  print('3rd section token: ${_formatToken(t3.tokenNo)}');
+  print('4th section token: ${_formatToken(t4.tokenNo)}');
+
+  final mistyDec = Class2TokenDecoder(misty1Cur, misty1Ea);
+  final m1 =
+      mistyDec.decodeBinary66('m1', t1.encryptedTokenBitString!)
+          as Set1stSectionDecoderKeyToken;
+  final m2 =
+      mistyDec.decodeBinary66('m2', t2.encryptedTokenBitString!)
+          as Set2ndSectionDecoderKeyToken;
+  final m3 =
+      mistyDec.decodeBinary66('m3', t3.encryptedTokenBitString!)
+          as Set3rdSectionDecoderKeyToken;
+  final m4 =
+      mistyDec.decodeBinary66('m4', t4.encryptedTokenBitString!)
+          as Set4thSectionDecoderKeyToken;
+  final rebuiltMisty = combineMisty1DecoderKey(
+    m1.newKeyHighOrder!,
+    m3.newKeyMiddleOrder2!,
+    m4.newKeyMiddleOrder1!,
+    m2.newKeyLowOrder!,
+  );
+  print(
+    'Rebuilt MISTY1 key (16B): '
+    '${rebuiltMisty.keyData.map((b) => b.toRadixString(16).padLeft(2, '0')).join()} '
+    '(${_bytesEqual(rebuiltMisty.keyData, misty1New.keyData) ? 'MATCH' : 'MISMATCH'})',
+  );
+  print('');
+}
+
+bool _bytesEqual(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 String _formatToken(String tokenNo) {

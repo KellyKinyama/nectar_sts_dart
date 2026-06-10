@@ -11,15 +11,27 @@
 ///
 /// Supported via this layer:
 ///   - DKGA-02, DKGA-04
-///   - EA07 (STA), EA09 (DEA, used internally by DKGA-02)
+///   - EA07 (STA), EA09 (DEA, used internally by DKGA-02), EA11 (MISTY1)
 ///   - Class 0 / SubClass 0 — `TransferElectricityCreditToken`
 ///   - Class 1 / SubClass 0 + 1 — `InitiateMeterTestOrDisplay1/2Token`
+///   - Class 2 / SubClass 0 — `SetMaximumPowerLimitToken`
+///   - Class 2 / SubClass 1 — `ClearCreditToken`
+///   - Class 2 / SubClass 2 — `SetTariffRateToken`
+///   - Class 2 / SubClass 3 + 4 — `Set1stSection` / `Set2ndSectionDecoderKeyToken`
+///     (64-bit STA decoder-key rotation pair)
+///   - Class 2 / SubClass 5 — `ClearTamperConditionToken`
+///   - Class 2 / SubClass 6 — `SetMaximumPhasePowerUnbalanceLimitToken`
 ///
 /// Rejected with [NotImplementedException]:
 ///   - DKGA-01, DKGA-03 (not ported)
-///   - MISTY1 / EA11 (not ported)
 ///   - Class 0 SubClass 1 (water), Class 0 SubClass 2 (gas) (not ported)
-///   - All Class 2 tokens (not ported)
+///   - Class 2 / SubClass 7 (`SetWaterMeterFactor`) — water out of scope
+///   - Class 2 / SubClass 8 + 9 — `Set3rdSection` / `Set4thSectionDecoderKeyToken`
+///     (128-bit MISTY1 decoder-key rotation). The token classes,
+///     generators and decoder are implemented and exported — see
+///     `Set3rdSectionDecoderKeyTokenGenerator` /
+///     `Set4thSectionDecoderKeyTokenGenerator` — but the param-map
+///     dispatch is not wired yet (pending 4-section meter rotation).
 ///   - `type: "prism-thrift"` — use [PrismHsm] instead.
 library;
 
@@ -30,21 +42,26 @@ import '../base/bit_string.dart';
 import '../domain/amount.dart';
 import '../domain/base_date.dart';
 import '../domain/class1_payload.dart';
+import '../domain/class2_payload.dart';
+import '../domain/class2_register_payloads.dart';
 import '../domain/primitives.dart';
 import '../domain/random_no.dart';
 import '../domain/token_identifier.dart';
 import '../encryption/data_encryption_algorithm.dart';
 import '../encryption/encryption_algorithm.dart';
+import '../encryption/misty1_algorithm.dart';
 import '../encryption/standard_transfer_algorithm.dart';
 import '../exceptions/exceptions.dart';
 import '../keys/decoder_key.dart';
 import '../keys/vending_key.dart';
 import '../token/class0_tokens.dart';
 import '../token/class1_tokens.dart';
+import '../token/class2_tokens.dart';
 import '../token/token.dart';
 import '../tokendec/token_decoder_dispatcher.dart';
 import '../tokengen/class0_token_generators.dart';
 import '../tokengen/class1_token_generators.dart';
+import '../tokengen/class2_token_generators.dart';
 import 'hsm.dart';
 
 /// String constants for the param-map keys consumed by
@@ -77,6 +94,24 @@ class VirtualHsmParams {
   static const randomNo = 'random_no';
   static const manufacturerCode = 'manufacturer_code';
   static const control = 'control';
+
+  // Class 2 key-change tokens (params match the upstream Java
+  // `Set*SectionDecoderKeyToken.getParams()` keys exactly).
+  static const newDecoderKey = 'new_decoder_key';
+  static const keyExpiryNumberHighOrder = 'key_expiry_number_high_order';
+  static const keyExpiryNumberLowOrder = 'key_expiry_number_low_order';
+  static const newKeyRevisionNumber = 'new_key_revision_number';
+  static const newKeyType = 'new_key_type';
+  static const newTariffIndex = 'new_tariff_index';
+  static const rollOverKeyChange = 'roll_over_key_change';
+
+  // Class 2 register-payload management tokens.
+  static const maximumPowerLimit = 'maximum_power_limit';
+  static const register = 'register';
+  static const tariffRate = 'tariff_rate';
+  static const pad = 'pad';
+  static const maximumPhasePowerUnbalanceLimit =
+      'maximum_phase_power_unbalance_limit';
 }
 
 /// Adds the params-driven `generateToken` / `decodeToken` entry points
@@ -107,16 +142,54 @@ extension VirtualHsmDispatch on VirtualHsm {
           'Class 0 SubClass $sub (water / gas) tokens are not ported',
         );
       case '2,0':
+        return _generateClass2SetMaximumPowerLimit(
+          requestID,
+          params,
+          decoderKey,
+          ea,
+        );
       case '2,1':
+        return _generateClass2ClearCredit(requestID, params, decoderKey, ea);
       case '2,2':
+        return _generateClass2SetTariffRate(requestID, params, decoderKey, ea);
       case '2,3':
+        return _generateClass2KeyChange1stSection(
+          requestID,
+          params,
+          decoderKey,
+          ea,
+        );
       case '2,4':
+        return _generateClass2KeyChange2ndSection(
+          requestID,
+          params,
+          decoderKey,
+          ea,
+        );
       case '2,5':
+        return _generateClass2ClearTamperCondition(
+          requestID,
+          params,
+          decoderKey,
+          ea,
+        );
       case '2,6':
+        return _generateClass2SetMaximumPhasePowerUnbalanceLimit(
+          requestID,
+          params,
+          decoderKey,
+          ea,
+        );
       case '2,7':
         throw NotImplementedException(
-          'Class 2 SubClass $sub (engineering / key-change) tokens are '
-          'not ported',
+          'Class 2 SubClass 7 (SetWaterMeterFactor) is not ported — '
+          'water meters are out of scope',
+        );
+      case '2,8':
+      case '2,9':
+        throw NotImplementedException(
+          'Class 2 SubClass $sub (3rd/4th section decoder-key transfer) '
+          'requires MISTY1 / EA11, which is not ported',
         );
       default:
         throw InvalidTokenException('Unknown class/subclass: $klass/$sub');
@@ -232,9 +305,7 @@ extension VirtualHsmDispatch on VirtualHsm {
       case 'dea':
         return DataEncryptionAlgorithm();
       case 'misty1':
-        throw const NotImplementedException(
-          'MISTY1 / EA11 is not ported in this Dart distribution',
-        );
+        return Misty1EncryptionAlgorithm();
       default:
         throw InvalidTokenException('Unknown encryption_algorithm: $ea');
     }
@@ -297,6 +368,181 @@ extension VirtualHsmDispatch on VirtualHsm {
       );
     InitiateMeterTestOrDisplay2TokenGenerator(decoderKey, ea).generate(token);
     return token;
+  }
+
+  Set1stSectionDecoderKeyToken _generateClass2KeyChange1stSection(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final newKey = DecoderKey(
+      parseHexKey(_required(params, VirtualHsmParams.newDecoderKey).toString()),
+    );
+    return Set1stSectionDecoderKeyTokenGenerator(
+      decoderKey: decoderKey,
+      encryptionAlgorithm: ea,
+      keyExpiryNumberHighOrder: KeyExpiryNumberHighOrder(
+        BitString.fromValue(
+          _intParam(params, VirtualHsmParams.keyExpiryNumberHighOrder),
+          4,
+        ),
+      ),
+      keyRevisionNumber: KeyRevisionNumber(
+        _intParam(params, VirtualHsmParams.newKeyRevisionNumber),
+      ),
+      rolloverKeyChange: RolloverKeyChange.fromBool(
+        _intParam(params, VirtualHsmParams.rollOverKeyChange) != 0,
+      ),
+      keyType: KeyType(_intParam(params, VirtualHsmParams.newKeyType)),
+      newDecoderKey: newKey,
+    ).generateNew(requestID);
+  }
+
+  Set2ndSectionDecoderKeyToken _generateClass2KeyChange2ndSection(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final newKey = DecoderKey(
+      parseHexKey(_required(params, VirtualHsmParams.newDecoderKey).toString()),
+    );
+    return Set2ndSectionDecoderKeyTokenGenerator(
+      decoderKey: decoderKey,
+      encryptionAlgorithm: ea,
+      keyExpiryNumberLowOrder: KeyExpiryNumberLowOrder(
+        BitString.fromValue(
+          _intParam(params, VirtualHsmParams.keyExpiryNumberLowOrder),
+          4,
+        ),
+      ),
+      tariffIndex: TariffIndex(
+        _required(params, VirtualHsmParams.newTariffIndex).toString(),
+      ),
+      newDecoderKey: newKey,
+    ).generateNew(requestID);
+  }
+
+  // ---- Class 2 register-payload management tokens ---------------
+
+  SetMaximumPowerLimitToken _generateClass2SetMaximumPowerLimit(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final gen = SetMaximumPowerLimitTokenGenerator(decoderKey, ea);
+    final token = gen.buildToken(
+      requestID,
+      randomNo: _randomFromParams(params),
+      tokenIdentifier: TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      ),
+      maximumPowerLimit: MaximumPowerLimit(
+        _intParam(params, VirtualHsmParams.maximumPowerLimit),
+      ),
+    );
+    return gen.generate(token);
+  }
+
+  ClearCreditToken _generateClass2ClearCredit(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final gen = ClearCreditTokenGenerator(decoderKey, ea);
+    final registerValue = params[VirtualHsmParams.register];
+    final regBits = registerValue == null
+        ? BitString.fromValue(0, 16)
+        : BitString.fromValue(
+            registerValue is int
+                ? registerValue
+                : int.parse(registerValue.toString()),
+            16,
+          );
+    final token = gen.buildToken(
+      requestID,
+      randomNo: _randomFromParams(params),
+      tokenIdentifier: TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      ),
+      register: Register(regBits),
+    );
+    return gen.generate(token);
+  }
+
+  SetTariffRateToken _generateClass2SetTariffRate(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final gen = SetTariffRateTokenGenerator(decoderKey, ea);
+    final token = gen.buildToken(
+      requestID,
+      randomNo: _randomFromParams(params),
+      tokenIdentifier: TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      ),
+      rate: Rate.fromValue(_intParam(params, VirtualHsmParams.tariffRate)),
+    );
+    return gen.generate(token);
+  }
+
+  ClearTamperConditionToken _generateClass2ClearTamperCondition(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final gen = ClearTamperConditionTokenGenerator(decoderKey, ea);
+    final padValue = params[VirtualHsmParams.pad];
+    final padBits = padValue == null
+        ? BitString.fromValue(0, 16)
+        : BitString.fromValue(
+            padValue is int ? padValue : int.parse(padValue.toString()),
+            16,
+          );
+    final token = gen.buildToken(
+      requestID,
+      randomNo: _randomFromParams(params),
+      tokenIdentifier: TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      ),
+      pad: Pad(padBits),
+    );
+    return gen.generate(token);
+  }
+
+  SetMaximumPhasePowerUnbalanceLimitToken
+  _generateClass2SetMaximumPhasePowerUnbalanceLimit(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final gen = SetMaximumPhasePowerUnbalanceLimitTokenGenerator(
+      decoderKey,
+      ea,
+    );
+    final token = gen.buildToken(
+      requestID,
+      randomNo: _randomFromParams(params),
+      tokenIdentifier: TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      ),
+      maximumPhasePowerUnbalanceLimit: MaximumPhasePowerUnbalanceLimit(
+        _intParam(params, VirtualHsmParams.maximumPhasePowerUnbalanceLimit),
+      ),
+    );
+    return gen.generate(token);
   }
 }
 

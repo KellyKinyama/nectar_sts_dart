@@ -141,19 +141,23 @@ void main() {
       }
     });
 
-    test('Class 2 tokens are rejected as not-ported', () {
-      final hsm = _hsm();
-      expect(
-        () => hsm.generateToken('r', {
-          ..._dkga02Native(),
-          VirtualHsmParams.tokenClass: '2',
-          VirtualHsmParams.tokenSubclass: '0',
-        }),
-        throwsA(isA<NotImplementedException>()),
-      );
-    });
+    test(
+      'Class 2 subclass 7 (water meter factor) is rejected as not-ported',
+      () {
+        final hsm = _hsm();
+        expect(
+          () => hsm.generateToken('r', {
+            ..._dkga02Native(),
+            VirtualHsmParams.tokenClass: '2',
+            VirtualHsmParams.tokenSubclass: '7',
+          }),
+          throwsA(isA<NotImplementedException>()),
+        );
+      },
+    );
 
-    test('MISTY1 encryption_algorithm is rejected', () {
+    test('MISTY1 encryption_algorithm needs a 16-byte decoder key '
+        '(DKGA-02 derives only 8 bytes)', () {
       final hsm = _hsm();
       expect(
         () => hsm.generateToken('r', {
@@ -164,7 +168,7 @@ void main() {
           VirtualHsmParams.amount: 1.0,
           VirtualHsmParams.tokenId: '2024-06-01T12:00:00Z',
         }),
-        throwsA(isA<NotImplementedException>()),
+        throwsA(isA<InvalidKeyDataException>()),
       );
     });
 

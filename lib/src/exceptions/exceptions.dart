@@ -32,6 +32,10 @@ class InvalidRangeException extends StsError {
   const InvalidRangeException(super.message);
 }
 
+class InvalidRateException extends StsError {
+  const InvalidRateException(super.message);
+}
+
 class BitConcatOverflowError extends StsError {
   const BitConcatOverflowError(super.message);
 }

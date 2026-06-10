@@ -66,6 +66,120 @@ class ApplyRejected extends ApplyResult {
   const ApplyRejected(this.reason);
 }
 
+/// A 1st Section Decoder Key Change Token was accepted and stashed,
+/// waiting for the matching 2nd section before rotation happens.
+class ApplyKeyChange1stStaged extends ApplyResult {
+  final int keyExpiryNumberHighOrder;
+  final int newKeyRevisionNumber;
+  final int newKeyType;
+  final bool rolloverKeyChange;
+  const ApplyKeyChange1stStaged({
+    required this.keyExpiryNumberHighOrder,
+    required this.newKeyRevisionNumber,
+    required this.newKeyType,
+    required this.rolloverKeyChange,
+  });
+}
+
+/// A 2nd Section Decoder Key Change Token was accepted and stashed,
+/// waiting for the matching 1st section before rotation happens.
+class ApplyKeyChange2ndStaged extends ApplyResult {
+  final int keyExpiryNumberLowOrder;
+  final String newTariffIndex;
+  const ApplyKeyChange2ndStaged({
+    required this.keyExpiryNumberLowOrder,
+    required this.newTariffIndex,
+  });
+}
+
+/// Both halves of a decoder-key change have arrived; the meter
+/// rotated to the new key. Subsequent tokens are decoded under it.
+class ApplyKeyRotated extends ApplyResult {
+  final int newKeyRevisionNumber;
+  final int newKeyType;
+  final int keyExpiryNumber;
+  final String newTariffIndex;
+  final bool rolloverKeyChange;
+  const ApplyKeyRotated({
+    required this.newKeyRevisionNumber,
+    required this.newKeyType,
+    required this.keyExpiryNumber,
+    required this.newTariffIndex,
+    required this.rolloverKeyChange,
+  });
+}
+
+/// A Class 2 KCT token decoded successfully but cannot be applied in
+/// the meter's current state (e.g. a 2nd section arrived without a
+/// matching 1st section already staged, or vice-versa).
+class ApplyKeyChangeRejected extends ApplyResult {
+  final String reason;
+  const ApplyKeyChangeRejected(this.reason);
+}
+
+/// A management token (Class 2 register-payload subclass) was
+/// already-seen by TID. Meter state is unchanged.
+class ApplyManagementReplay extends ApplyResult {
+  final String tokenType;
+  final int tidMinutes;
+  const ApplyManagementReplay({
+    required this.tokenType,
+    required this.tidMinutes,
+  });
+}
+
+/// `SetMaximumPowerLimit_20` was accepted and the meter's MPL was
+/// updated.
+class ApplyMaximumPowerLimitSet extends ApplyResult {
+  final int maximumPowerLimit;
+  final int tidMinutes;
+  const ApplyMaximumPowerLimitSet({
+    required this.maximumPowerLimit,
+    required this.tidMinutes,
+  });
+}
+
+/// `ClearCredit_21` was accepted; balance was reset to 0.
+class ApplyCreditCleared extends ApplyResult {
+  final double previousBalanceKwh;
+  final int register;
+  final int tidMinutes;
+  const ApplyCreditCleared({
+    required this.previousBalanceKwh,
+    required this.register,
+    required this.tidMinutes,
+  });
+}
+
+/// `SetTariffRate_22` was accepted and the active tariff rate was
+/// updated.
+class ApplyTariffRateSet extends ApplyResult {
+  final int tariffRate;
+  final int tidMinutes;
+  const ApplyTariffRateSet({
+    required this.tariffRate,
+    required this.tidMinutes,
+  });
+}
+
+/// `ClearTamperCondition_25` was accepted; any latched tamper flags
+/// have been cleared.
+class ApplyTamperConditionCleared extends ApplyResult {
+  final int tidMinutes;
+  const ApplyTamperConditionCleared({required this.tidMinutes});
+}
+
+/// `SetMaximumPhasePowerUnbalanceLimit_26` was accepted and the
+/// meter's MPPUL setting was updated.
+class ApplyMaximumPhasePowerUnbalanceLimitSet extends ApplyResult {
+  final int maximumPhasePowerUnbalanceLimit;
+  final int tidMinutes;
+  const ApplyMaximumPhasePowerUnbalanceLimitSet({
+    required this.maximumPhasePowerUnbalanceLimit,
+    required this.tidMinutes,
+  });
+}
+
 /// Persisted record of one successfully-applied credit token.
 class AppliedTokenRecord {
   final String tokenNo;
@@ -95,6 +209,45 @@ class AppliedTokenRecord {
         tokenNo: j['token_no'] as String,
         amountKwh: (j['amount_kwh'] as num).toDouble(),
         tidMinutes: (j['tid_minutes'] as num).toInt(),
+        issuedAt: DateTime.parse(j['issued_at'] as String),
+        appliedAt: DateTime.parse(j['applied_at'] as String),
+      );
+}
+
+/// Persisted record of one successfully-applied Class 2 register
+/// management token. Used for TID-based replay protection.
+class AppliedManagementTokenRecord {
+  final String tokenNo;
+  final String tokenType;
+  final int tidMinutes;
+  final int registerValue;
+  final DateTime issuedAt;
+  final DateTime appliedAt;
+
+  const AppliedManagementTokenRecord({
+    required this.tokenNo,
+    required this.tokenType,
+    required this.tidMinutes,
+    required this.registerValue,
+    required this.issuedAt,
+    required this.appliedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'token_no': tokenNo,
+    'token_type': tokenType,
+    'tid_minutes': tidMinutes,
+    'register_value': registerValue,
+    'issued_at': issuedAt.toUtc().toIso8601String(),
+    'applied_at': appliedAt.toUtc().toIso8601String(),
+  };
+
+  factory AppliedManagementTokenRecord.fromJson(Map<String, dynamic> j) =>
+      AppliedManagementTokenRecord(
+        tokenNo: j['token_no'] as String,
+        tokenType: j['token_type'] as String,
+        tidMinutes: (j['tid_minutes'] as num).toInt(),
+        registerValue: (j['register_value'] as num).toInt(),
         issuedAt: DateTime.parse(j['issued_at'] as String),
         appliedAt: DateTime.parse(j['applied_at'] as String),
       );
@@ -152,16 +305,50 @@ class MeterIdentity {
 }
 
 class VirtualMeter {
-  final MeterIdentity identity;
-  final Uint8List decoderKeyBytes;
+  MeterIdentity identity;
+  Uint8List decoderKeyBytes;
   final String encryptionAlgorithmName; // 'sta' | 'dea'
   double balanceKwh;
   final List<AppliedTokenRecord> appliedTokens;
+  final List<AppliedManagementTokenRecord> appliedManagementTokens;
   final DateTime createdAt;
 
   /// Filesystem path the meter was loaded from (or will be saved
   /// to). `null` for in-memory-only meters used in unit tests.
   String? filePath;
+
+  /// Current 8-bit Key Expiry Number, if a KCT pair has ever
+  /// rotated this meter. `null` on a freshly-personalized meter.
+  int? keyExpiryNumber;
+
+  /// Last-set Maximum Power Limit, in the meter's MPL units (16-bit
+  /// unsigned). `null` if `SetMaximumPowerLimit` has never been
+  /// applied to this meter.
+  int? maximumPowerLimit;
+
+  /// Last-set Maximum Phase Power Unbalance Limit (16-bit unsigned).
+  int? maximumPhasePowerUnbalanceLimit;
+
+  /// Last-set Tariff Rate (16-bit unsigned).
+  int? tariffRate;
+
+  /// When the last `ClearTamperCondition_25` token was applied, if
+  /// any. Used to detect whether the meter is currently in a clean
+  /// tamper-state-machine state.
+  DateTime? tamperConditionClearedAt;
+
+  /// When the last `ClearCredit_21` token was applied, if any.
+  DateTime? creditClearedAt;
+
+  // ---- Staged Class 2 Decoder Key Change Token halves --------
+  // A real STS meter buffers exactly one in-flight 1st + one
+  // in-flight 2nd section. The pair is applied (rotation) the
+  // moment both have arrived. Anything else is rejected.
+  PendingKctSection? _pending1st;
+  PendingKctSection? _pending2nd;
+
+  PendingKctSection? get pending1stSection => _pending1st;
+  PendingKctSection? get pending2ndSection => _pending2nd;
 
   VirtualMeter({
     required this.identity,
@@ -169,10 +356,23 @@ class VirtualMeter {
     this.encryptionAlgorithmName = 'sta',
     this.balanceKwh = 0.0,
     List<AppliedTokenRecord>? appliedTokens,
+    List<AppliedManagementTokenRecord>? appliedManagementTokens,
     DateTime? createdAt,
     this.filePath,
+    this.keyExpiryNumber,
+    this.maximumPowerLimit,
+    this.maximumPhasePowerUnbalanceLimit,
+    this.tariffRate,
+    this.tamperConditionClearedAt,
+    this.creditClearedAt,
+    PendingKctSection? pending1stSection,
+    PendingKctSection? pending2ndSection,
   }) : appliedTokens = appliedTokens ?? <AppliedTokenRecord>[],
-       createdAt = createdAt ?? DateTime.now().toUtc();
+       appliedManagementTokens =
+           appliedManagementTokens ?? <AppliedManagementTokenRecord>[],
+       createdAt = createdAt ?? DateTime.now().toUtc(),
+       _pending1st = pending1stSection,
+       _pending2nd = pending2ndSection;
 
   /// Factory: personalize a fresh meter from a vending key + identity.
   /// Mirrors what a utility's factory provisioning step would do.
@@ -254,6 +454,28 @@ class VirtualMeter {
     }
     final token = (result as DecodeAccepted).token;
 
+    if (token is Set1stSectionDecoderKeyToken) {
+      return _stage1stSection(token);
+    }
+    if (token is Set2ndSectionDecoderKeyToken) {
+      return _stage2ndSection(token);
+    }
+    if (token is SetMaximumPowerLimitToken) {
+      return _applyMaximumPowerLimit(tokenNo, token);
+    }
+    if (token is ClearCreditToken) {
+      return _applyClearCredit(tokenNo, token);
+    }
+    if (token is SetTariffRateToken) {
+      return _applySetTariffRate(tokenNo, token);
+    }
+    if (token is ClearTamperConditionToken) {
+      return _applyClearTamperCondition(tokenNo, token);
+    }
+    if (token is SetMaximumPhasePowerUnbalanceLimitToken) {
+      return _applyMaximumPhasePowerUnbalanceLimit(tokenNo, token);
+    }
+
     if (token is! TransferElectricityCreditToken) {
       return ApplyNonCredit(token.type);
     }
@@ -280,21 +502,205 @@ class VirtualMeter {
     );
   }
 
+  // ---- Class 2 KCT staging ------------------------------------
+
+  ApplyResult _stage1stSection(Set1stSectionDecoderKeyToken t) {
+    final staged = PendingKctSection.first(
+      newKeyHighOrderBits: t.newKeyHighOrder!.bitString.toPaddedBinary(),
+      keyExpiryNumberHighOrder: t.keyExpiryNumberHighOrder!.value,
+      newKeyRevisionNumber: t.keyRevisionNumber!.value,
+      newKeyType: t.keyType!.value,
+      rolloverKeyChange: t.rolloverKeyChange!.isRollover,
+      stagedAt: DateTime.now().toUtc(),
+    );
+    _pending1st = staged;
+    if (_pending2nd != null) return _tryRotate();
+    return ApplyKeyChange1stStaged(
+      keyExpiryNumberHighOrder: staged.keyExpiryNumberHighOrder!,
+      newKeyRevisionNumber: staged.newKeyRevisionNumber!,
+      newKeyType: staged.newKeyType!,
+      rolloverKeyChange: staged.rolloverKeyChange!,
+    );
+  }
+
+  ApplyResult _stage2ndSection(Set2ndSectionDecoderKeyToken t) {
+    final staged = PendingKctSection.second(
+      newKeyLowOrderBits: t.newKeyLowOrder!.bitString.toPaddedBinary(),
+      keyExpiryNumberLowOrder: t.keyExpiryNumberLowOrder!.value,
+      newTariffIndex: t.tariffIndex!.value,
+      stagedAt: DateTime.now().toUtc(),
+    );
+    _pending2nd = staged;
+    if (_pending1st != null) return _tryRotate();
+    return ApplyKeyChange2ndStaged(
+      keyExpiryNumberLowOrder: staged.keyExpiryNumberLowOrder!,
+      newTariffIndex: staged.newTariffIndex!,
+    );
+  }
+
+  ApplyResult _tryRotate() {
+    final p1 = _pending1st!;
+    final p2 = _pending2nd!;
+    final newKey = combineStaDecoderKey(
+      NewKeyHighOrder(BitString.fromBinary(p1.newKeyHighOrderBits!)),
+      NewKeyLowOrder(BitString.fromBinary(p2.newKeyLowOrderBits!)),
+    );
+    final newKen =
+        (p1.keyExpiryNumberHighOrder! << 4) | p2.keyExpiryNumberLowOrder!;
+
+    decoderKeyBytes = Uint8List.fromList(newKey.keyData);
+    keyExpiryNumber = newKen;
+    identity = MeterIdentity(
+      issuerIdentificationNumber: identity.issuerIdentificationNumber,
+      individualAccountIdentificationNumber:
+          identity.individualAccountIdentificationNumber,
+      keyType: p1.newKeyType!,
+      supplyGroupCode: identity.supplyGroupCode,
+      tariffIndex: p2.newTariffIndex!,
+      keyRevisionNumber: p1.newKeyRevisionNumber!,
+      decoderKeyGenerationAlgorithm: identity.decoderKeyGenerationAlgorithm,
+      baseDate: identity.baseDate,
+    );
+    _pending1st = null;
+    _pending2nd = null;
+    return ApplyKeyRotated(
+      newKeyRevisionNumber: p1.newKeyRevisionNumber!,
+      newKeyType: p1.newKeyType!,
+      keyExpiryNumber: newKen,
+      newTariffIndex: p2.newTariffIndex!,
+      rolloverKeyChange: p1.rolloverKeyChange!,
+    );
+  }
+
+  // ---- Class 2 register-payload management tokens ------------
+
+  ApplyResult _applyMaximumPowerLimit(
+    String tokenNo,
+    SetMaximumPowerLimitToken t,
+  ) {
+    final tid = t.tokenIdentifier!.bitString.value;
+    final replay = _findManagementReplay(tid, t.type);
+    if (replay != null) return replay;
+    final value = t.maximumPowerLimit!.value;
+    maximumPowerLimit = value;
+    _recordManagementApply(tokenNo, t, tid, value);
+    return ApplyMaximumPowerLimitSet(maximumPowerLimit: value, tidMinutes: tid);
+  }
+
+  ApplyResult _applyClearCredit(String tokenNo, ClearCreditToken t) {
+    final tid = t.tokenIdentifier!.bitString.value;
+    final replay = _findManagementReplay(tid, t.type);
+    if (replay != null) return replay;
+    final reg = t.register!.value;
+    final previous = balanceKwh;
+    balanceKwh = 0.0;
+    creditClearedAt = DateTime.now().toUtc();
+    _recordManagementApply(tokenNo, t, tid, reg);
+    return ApplyCreditCleared(
+      previousBalanceKwh: previous,
+      register: reg,
+      tidMinutes: tid,
+    );
+  }
+
+  ApplyResult _applySetTariffRate(String tokenNo, SetTariffRateToken t) {
+    final tid = t.tokenIdentifier!.bitString.value;
+    final replay = _findManagementReplay(tid, t.type);
+    if (replay != null) return replay;
+    final value = t.rate!.value;
+    tariffRate = value;
+    _recordManagementApply(tokenNo, t, tid, value);
+    return ApplyTariffRateSet(tariffRate: value, tidMinutes: tid);
+  }
+
+  ApplyResult _applyClearTamperCondition(
+    String tokenNo,
+    ClearTamperConditionToken t,
+  ) {
+    final tid = t.tokenIdentifier!.bitString.value;
+    final replay = _findManagementReplay(tid, t.type);
+    if (replay != null) return replay;
+    tamperConditionClearedAt = DateTime.now().toUtc();
+    _recordManagementApply(tokenNo, t, tid, t.pad!.value);
+    return ApplyTamperConditionCleared(tidMinutes: tid);
+  }
+
+  ApplyResult _applyMaximumPhasePowerUnbalanceLimit(
+    String tokenNo,
+    SetMaximumPhasePowerUnbalanceLimitToken t,
+  ) {
+    final tid = t.tokenIdentifier!.bitString.value;
+    final replay = _findManagementReplay(tid, t.type);
+    if (replay != null) return replay;
+    final value = t.maximumPhasePowerUnbalanceLimit!.value;
+    maximumPhasePowerUnbalanceLimit = value;
+    _recordManagementApply(tokenNo, t, tid, value);
+    return ApplyMaximumPhasePowerUnbalanceLimitSet(
+      maximumPhasePowerUnbalanceLimit: value,
+      tidMinutes: tid,
+    );
+  }
+
+  ApplyManagementReplay? _findManagementReplay(int tid, String tokenType) {
+    final hit = appliedManagementTokens.any(
+      (r) => r.tidMinutes == tid && r.tokenType == tokenType,
+    );
+    return hit
+        ? ApplyManagementReplay(tokenType: tokenType, tidMinutes: tid)
+        : null;
+  }
+
+  void _recordManagementApply(
+    String tokenNo,
+    Class2RegisterToken token,
+    int tid,
+    int registerValue,
+  ) {
+    appliedManagementTokens.add(
+      AppliedManagementTokenRecord(
+        tokenNo: tokenNo,
+        tokenType: token.type,
+        tidMinutes: tid,
+        registerValue: registerValue,
+        issuedAt: token.tokenIdentifier!.timeOfIssue,
+        appliedAt: DateTime.now().toUtc(),
+      ),
+    );
+  }
+
   // ---- persistence ---------------------------------------------
 
   Map<String, dynamic> toJson() => {
-    'schema': 'nectar_sts_dart.virtual_meter/v1',
+    'schema': 'nectar_sts_dart.virtual_meter/v2',
     'created_at': createdAt.toIso8601String(),
     'identity': identity.toJson(),
     'decoder_key_hex': _bytesToHex(decoderKeyBytes),
     'encryption_algorithm': encryptionAlgorithmName,
     'balance_kwh': balanceKwh,
+    if (keyExpiryNumber != null) 'key_expiry_number': keyExpiryNumber,
+    if (maximumPowerLimit != null) 'maximum_power_limit': maximumPowerLimit,
+    if (maximumPhasePowerUnbalanceLimit != null)
+      'maximum_phase_power_unbalance_limit': maximumPhasePowerUnbalanceLimit,
+    if (tariffRate != null) 'tariff_rate': tariffRate,
+    if (tamperConditionClearedAt != null)
+      'tamper_condition_cleared_at': tamperConditionClearedAt!
+          .toUtc()
+          .toIso8601String(),
+    if (creditClearedAt != null)
+      'credit_cleared_at': creditClearedAt!.toUtc().toIso8601String(),
+    if (_pending1st != null) 'pending_1st_section': _pending1st!.toJson(),
+    if (_pending2nd != null) 'pending_2nd_section': _pending2nd!.toJson(),
     'applied_tokens': appliedTokens.map((r) => r.toJson()).toList(),
+    'applied_management_tokens': appliedManagementTokens
+        .map((r) => r.toJson())
+        .toList(),
   };
 
   factory VirtualMeter.fromJson(Map<String, dynamic> j, {String? filePath}) {
     final schema = j['schema'];
-    if (schema != null && schema != 'nectar_sts_dart.virtual_meter/v1') {
+    if (schema != null &&
+        schema != 'nectar_sts_dart.virtual_meter/v1' &&
+        schema != 'nectar_sts_dart.virtual_meter/v2') {
       throw FormatException('Unsupported meter schema: $schema');
     }
     return VirtualMeter(
@@ -305,10 +711,47 @@ class VirtualMeter {
       appliedTokens: ((j['applied_tokens'] as List?) ?? const [])
           .map((e) => AppliedTokenRecord.fromJson(e as Map<String, dynamic>))
           .toList(),
+      appliedManagementTokens:
+          ((j['applied_management_tokens'] as List?) ?? const [])
+              .map(
+                (e) => AppliedManagementTokenRecord.fromJson(
+                  e as Map<String, dynamic>,
+                ),
+              )
+              .toList(),
       createdAt: j['created_at'] is String
           ? DateTime.parse(j['created_at'] as String)
           : null,
       filePath: filePath,
+      keyExpiryNumber: j['key_expiry_number'] is num
+          ? (j['key_expiry_number'] as num).toInt()
+          : null,
+      maximumPowerLimit: j['maximum_power_limit'] is num
+          ? (j['maximum_power_limit'] as num).toInt()
+          : null,
+      maximumPhasePowerUnbalanceLimit:
+          j['maximum_phase_power_unbalance_limit'] is num
+          ? (j['maximum_phase_power_unbalance_limit'] as num).toInt()
+          : null,
+      tariffRate: j['tariff_rate'] is num
+          ? (j['tariff_rate'] as num).toInt()
+          : null,
+      tamperConditionClearedAt: j['tamper_condition_cleared_at'] is String
+          ? DateTime.parse(j['tamper_condition_cleared_at'] as String)
+          : null,
+      creditClearedAt: j['credit_cleared_at'] is String
+          ? DateTime.parse(j['credit_cleared_at'] as String)
+          : null,
+      pending1stSection: j['pending_1st_section'] is Map<String, dynamic>
+          ? PendingKctSection.fromJson(
+              j['pending_1st_section'] as Map<String, dynamic>,
+            )
+          : null,
+      pending2ndSection: j['pending_2nd_section'] is Map<String, dynamic>
+          ? PendingKctSection.fromJson(
+              j['pending_2nd_section'] as Map<String, dynamic>,
+            )
+          : null,
     );
   }
 
@@ -368,4 +811,102 @@ String _bytesToHex(Uint8List bytes) {
     sb.write(b.toRadixString(16).padLeft(2, '0'));
   }
   return sb.toString();
+}
+
+/// Persisted staging slot for one half of a pending Decoder Key
+/// Change Token pair. The meter holds at most one of each (1st /
+/// 2nd) — a fresh same-section token simply overwrites the slot,
+/// matching real meter behavior for KCT retries.
+class PendingKctSection {
+  // ---- 1st section fields ----
+  final String? newKeyHighOrderBits; // 32-bit binary string (MSB-first)
+  final int? keyExpiryNumberHighOrder; // 0..15
+  final int? newKeyRevisionNumber; // 1..9
+  final int? newKeyType; // 0..3
+  final bool? rolloverKeyChange;
+
+  // ---- 2nd section fields ----
+  final String? newKeyLowOrderBits; // 32-bit binary string (MSB-first)
+  final int? keyExpiryNumberLowOrder; // 0..15
+  final String? newTariffIndex; // 2-digit decimal string
+
+  final DateTime stagedAt;
+
+  const PendingKctSection._({
+    this.newKeyHighOrderBits,
+    this.keyExpiryNumberHighOrder,
+    this.newKeyRevisionNumber,
+    this.newKeyType,
+    this.rolloverKeyChange,
+    this.newKeyLowOrderBits,
+    this.keyExpiryNumberLowOrder,
+    this.newTariffIndex,
+    required this.stagedAt,
+  });
+
+  factory PendingKctSection.first({
+    required String newKeyHighOrderBits,
+    required int keyExpiryNumberHighOrder,
+    required int newKeyRevisionNumber,
+    required int newKeyType,
+    required bool rolloverKeyChange,
+    required DateTime stagedAt,
+  }) => PendingKctSection._(
+    newKeyHighOrderBits: newKeyHighOrderBits,
+    keyExpiryNumberHighOrder: keyExpiryNumberHighOrder,
+    newKeyRevisionNumber: newKeyRevisionNumber,
+    newKeyType: newKeyType,
+    rolloverKeyChange: rolloverKeyChange,
+    stagedAt: stagedAt,
+  );
+
+  factory PendingKctSection.second({
+    required String newKeyLowOrderBits,
+    required int keyExpiryNumberLowOrder,
+    required String newTariffIndex,
+    required DateTime stagedAt,
+  }) => PendingKctSection._(
+    newKeyLowOrderBits: newKeyLowOrderBits,
+    keyExpiryNumberLowOrder: keyExpiryNumberLowOrder,
+    newTariffIndex: newTariffIndex,
+    stagedAt: stagedAt,
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (newKeyHighOrderBits != null)
+      'new_key_high_order_bits': newKeyHighOrderBits,
+    if (keyExpiryNumberHighOrder != null)
+      'key_expiry_number_high_order': keyExpiryNumberHighOrder,
+    if (newKeyRevisionNumber != null)
+      'new_key_revision_number': newKeyRevisionNumber,
+    if (newKeyType != null) 'new_key_type': newKeyType,
+    if (rolloverKeyChange != null) 'roll_over_key_change': rolloverKeyChange,
+    if (newKeyLowOrderBits != null)
+      'new_key_low_order_bits': newKeyLowOrderBits,
+    if (keyExpiryNumberLowOrder != null)
+      'key_expiry_number_low_order': keyExpiryNumberLowOrder,
+    if (newTariffIndex != null) 'new_tariff_index': newTariffIndex,
+    'staged_at': stagedAt.toUtc().toIso8601String(),
+  };
+
+  factory PendingKctSection.fromJson(Map<String, dynamic> j) =>
+      PendingKctSection._(
+        newKeyHighOrderBits: j['new_key_high_order_bits'] as String?,
+        keyExpiryNumberHighOrder: j['key_expiry_number_high_order'] is num
+            ? (j['key_expiry_number_high_order'] as num).toInt()
+            : null,
+        newKeyRevisionNumber: j['new_key_revision_number'] is num
+            ? (j['new_key_revision_number'] as num).toInt()
+            : null,
+        newKeyType: j['new_key_type'] is num
+            ? (j['new_key_type'] as num).toInt()
+            : null,
+        rolloverKeyChange: j['roll_over_key_change'] as bool?,
+        newKeyLowOrderBits: j['new_key_low_order_bits'] as String?,
+        keyExpiryNumberLowOrder: j['key_expiry_number_low_order'] is num
+            ? (j['key_expiry_number_low_order'] as num).toInt()
+            : null,
+        newTariffIndex: j['new_tariff_index'] as String?,
+        stagedAt: DateTime.parse(j['staged_at'] as String),
+      );
 }

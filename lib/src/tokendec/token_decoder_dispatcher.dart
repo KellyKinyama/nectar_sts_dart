@@ -4,6 +4,7 @@ import '../exceptions/exceptions.dart';
 import '../keys/decoder_key.dart';
 import '../token/token.dart';
 import 'class1_token_decoder.dart';
+import 'class2_token_decoder.dart';
 import 'transfer_electricity_credit_decoder.dart';
 
 /// Result of a top-level decode operation. Either a fully-rehydrated
@@ -61,13 +62,11 @@ class TokenDecoderDispatcher {
           ).decodeBinary66(requestID, binary66);
           return DecodeAccepted(tok);
         case 2:
-          return const DecodeFailure(
-            NotImplementedException(
-              'Class 2 (engineering / set-parameter) tokens are not '
-              'implemented in this port',
-            ),
-            'class 2 not implemented',
-          );
+          final tok = Class2TokenDecoder(
+            decoderKey,
+            encryptionAlgorithm,
+          ).decodeBinary66(requestID, binary66);
+          return DecodeAccepted(tok);
         case 3:
           return const DecodeFailure(
             NotImplementedException(

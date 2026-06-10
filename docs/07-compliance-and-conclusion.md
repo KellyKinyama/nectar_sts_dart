@@ -43,7 +43,7 @@ that one assertion as the canary.
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | CTSA01 step3 / step4 (water, DKGA-02 + EA07)                   | This port intentionally implements electricity only. Water/gas would need `TransferWaterCreditToken` / generator classes.  |
 | CTSA01 step5 / step6 (gas, DKGA-02 + EA07)                     | Same as above.                                                                                                             |
-| All steps of `STSComplianceTests_STS_531_1_0_04_CTSA01`        | Uses MISTY1 (EA11) for both key derivation and token encryption; MISTY1 is out of scope. See `lib/src/decoderkey/dkga04.dart`. |
+| `STSComplianceTests_STS_531_1_0_04_CTSA01` full sweep          | MISTY1 (EA11) is now implemented — see [`lib/src/encryption/misty1.dart`](../lib/src/encryption/misty1.dart) and the RFC 2994 reference vectors in [test/misty1_test.dart](../test/misty1_test.dart). The DKGA-04 + MISTY1 derivation path is exercised in [test/dkga04_misty1_test.dart](../test/dkga04_misty1_test.dart), but the upstream CTSA01-EA11 ciphertext vectors haven't been transcribed yet. |
 
 The `KeyExpiryNumber` (KEN) parameter that the Java generators
 take in their constructor is **not** modelled here. By inspection,
@@ -59,16 +59,20 @@ Beyond the conformance vectors, the suite covers:
 | Test file                                                                       | Focus                                                                                       |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | [test/dkga_test.dart](../test/dkga_test.dart)                                   | DKGA-02 and DKGA-04 derivation + EA07 round-trip on a derived key.                          |
+| [test/dkga04_misty1_test.dart](../test/dkga04_misty1_test.dart)                 | DKGA-04 derives a 16-byte key for MISTY1 + full EA11 round-trip on the derived key.         |
 | [test/encryption_test.dart](../test/encryption_test.dart)                       | EA07 / EA09 round-trip and `Key.getKeyBit` LSB-first semantics.                             |
+| [test/misty1_test.dart](../test/misty1_test.dart)                               | MISTY1 (EA11) round-trip + RFC 2994 Appendix A.1 reference vectors + 100-iter LCG fuzz.     |
 | [test/base_layer_test.dart](../test/base_layer_test.dart)                       | `BitString`, `Nibble`, byte-array helpers.                                                  |
 | [test/token_round_trip_test.dart](../test/token_round_trip_test.dart)           | Generator → 20-digit display → decoder preserves Amount + TID across many random inputs.    |
 | [test/class1_and_dispatcher_test.dart](../test/class1_and_dispatcher_test.dart) | Class 1 InitiateMeterTestOrDisplay (both sub-classes) round-trip; multi-class dispatch.     |
-| [test/virtual_meter_test.dart](../test/virtual_meter_test.dart)                 | Apply → balance update, replay detection, corrupted-token rejection, save/load persistence. |
+| [test/class2_kct_test.dart](../test/class2_kct_test.dart)                       | Class 2 register family + 1st/2nd Section STA KCT round-trip through the HSM dispatcher.    |
+| [test/class2_kct_misty1_test.dart](../test/class2_kct_misty1_test.dart)         | Class 2 3rd/4th Section MISTY1 KCT generator ↔ decoder and 4-section 128-bit key rebuild.   |
+| [test/virtual_meter_test.dart](../test/virtual_meter_test.dart)                 | Apply → balance update, replay detection, 1st+2nd KCT staging + STA key rotation, save/load.|
 | [test/virtual_hsm_dispatch_test.dart](../test/virtual_hsm_dispatch_test.dart)   | Param-map API matches the upstream Java `tokens-service` contract.                          |
 | [test/api_server_test.dart](../test/api_server_test.dart)                       | HTTP MVP — `POST /v1/tokens` + `POST /v1/tokens/{tokenNo}` with bearer-token auth.          |
 
-Total: about **76 tests across 8 files**, all passing on Dart SDK
-≥ 3.4 on Windows/macOS/Linux.
+Total: **114 tests**, all passing on Dart SDK ≥ 3.4 on
+Windows/macOS/Linux.
 
 ```powershell
 # from c:\www\dart\nectar_sts_dart
@@ -89,17 +93,21 @@ roughly in order of effort:
    only. The Class 0 decoder dispatch also needs to look at the
    sub-class nibble after CRC verification.
 
-2. **MISTY1 (EA11).** Implementing MISTY1 unlocks the full
-   `STSComplianceTests_STS_531_1_0_04_CTSA01` set and finishes the
-   DKGA-04 story. The cipher is small (~300 lines in C/Java) but
-   the spec is paywalled; clean-room reference is
-   [RFC 2994](https://www.rfc-editor.org/rfc/rfc2994).
+2. **HSM dispatch for Class 2 / SubClass 8 + 9** (MISTY1 KCT 3rd/4th
+   sections). The token classes, generators and decoder are in place
+   and tested directly; what's still missing is the
+   `VirtualHsm.generateToken('2,8' / '2,9', ...)` wiring and the
+   `VirtualMeter` side that buffers all four pending halves and
+   rotates to the new 128-bit MISTY1 key when the full set has
+   arrived (mirroring the STA 1st/2nd-section staging that's already
+   in place).
 
-3. **Class 2 management tokens.** Large surface area (`NewKey*`,
-   `RolloverKeyChange`, `Rate`, `MaximumPowerLimit`, `_3KCT`, …)
-   but the framework — class dispatch, transposition, CRC, EA07 —
-   is already in place; each new sub-class is just a data-block
-   layout + a generator + a decoder.
+3. **Transcribe the CTSA01-EA11 ciphertext vectors.** MISTY1 itself
+   passes the RFC 2994 vectors, but the official STS6 CTSA01-EA11
+   sweep (DKGA-04 + EA11 → specific token string) isn't transcribed
+   into [test/sts_compliance_test.dart](../test/sts_compliance_test.dart)
+   yet — it just needs the inputs + expected 20-digit outputs from
+   the spec.
 
 4. **Real HSM transport.** Today `PrismHsm` is a stub. Wiring it
    to a real Prism HSM (or Thales / Utimaco equivalent) over

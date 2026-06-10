@@ -44,8 +44,7 @@ import 'dkga02.dart' show DecoderKeyGeneratorAlgorithm;
 ///              byte-reversal is documented in the Java original as the
 ///              compatibility shim with the earlier DKGA-02 + EA02
 ///              implementation referenced by IEC 62055-41:2014.
-///   - MISTY1 : first 16 bytes of the HMAC, as-is. NOT IMPLEMENTED in
-///              this port (EA11 / MISTY1 is out of scope).
+///   - MISTY1 : first 16 bytes of the HMAC, as-is.
 class DecoderKeyGeneratorAlgorithm04 extends DecoderKeyGeneratorAlgorithm {
   final BaseDate baseDate;
   final TariffIndex tariffIndex;
@@ -93,9 +92,7 @@ class DecoderKeyGeneratorAlgorithm04 extends DecoderKeyGeneratorAlgorithm {
     final mac = tls.hmac(vendingKey.keyData, dataBlock, tls.newSha256Digest());
 
     if (encryptionAlgorithm.code == EncryptionAlgorithmCode.misty1) {
-      throw const NotImplementedException(
-        'DKGA-04 for MISTY1 (EA11) is out of scope in this port',
-      );
+      return DecoderKey(Uint8List.fromList(mac.sublist(0, 16)));
     }
 
     final reversed = Uint8List(8);

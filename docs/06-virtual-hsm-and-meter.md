@@ -44,16 +44,30 @@ backends without changing wire format.
 Supported via this layer:
 
 - DKGA-02, DKGA-04
-- EA07 (STA), EA09 (DEA, internal to DKGA-02)
+- EA07 (STA), EA09 (DEA, internal to DKGA-02), EA11 (MISTY1)
 - Class 0 / SubClass 0 — `TransferElectricityCreditToken`
 - Class 1 / SubClass 0 + 1 — `InitiateMeterTestOrDisplay1/2Token`
+- Class 2 register family — `SetMaximumPowerLimit` (2/0),
+  `ClearCredit` (2/1), `SetTariffRate` (2/2),
+  `ClearTamperCondition` (2/5),
+  `SetMaximumPhasePowerUnbalanceLimit` (2/6)
+- Class 2 / SubClass 3 + 4 — `Set1stSection` / `Set2ndSectionDecoderKeyToken`
+  (64-bit STA decoder-key rotation pair). Either side of the pair
+  can also be generated under MISTY1 (the new-key splitter switches
+  on the EA), but the meter currently only knows how to combine the
+  STA halves.
 
 Cleanly rejected with `NotImplementedException`:
 
 - DKGA-01, DKGA-03
-- MISTY1 / EA11
 - Class 0 SubClass 1 (water), Class 0 SubClass 2 (gas)
-- All Class 2 tokens
+- Class 2 / SubClass 7 — `SetWaterMeterFactor` (water only)
+- Class 2 / SubClass 8 + 9 — `Set3rdSection` / `Set4thSectionDecoderKeyToken`
+  (MISTY1 128-bit key-rotation path). The token classes, generators
+  and decoder _are_ implemented and exported — see
+  `Set3rdSectionDecoderKeyTokenGenerator` /
+  `Set4thSectionDecoderKeyTokenGenerator` — but the param-map
+  dispatch isn't wired yet (pending 4-section meter rotation).
 - `type: "prism-thrift"` — use `PrismHsm` instead.
 
 ## The VirtualMeter
