@@ -150,6 +150,12 @@ class BinaryWriter {
     writeByte(elemType);
     writeI32(size);
   }
+
+  void writeMapBegin(int keyType, int valueType, int size) {
+    writeByte(keyType);
+    writeByte(valueType);
+    writeI32(size);
+  }
 }
 
 /// Random-access big-endian reader over a pre-buffered frame.
@@ -245,6 +251,15 @@ class BinaryReader {
     final n = readI32();
     if (n < 0) throw TProtocolException('negative list size: $n');
     return (t, n);
+  }
+
+  /// `(keyType, valueType, size)`.
+  (int, int, int) readMapBegin() {
+    final kt = readByte();
+    final vt = readByte();
+    final n = readI32();
+    if (n < 0) throw TProtocolException('negative map size: $n');
+    return (kt, vt, n);
   }
 
   /// Read and discard a field of [type]. Used to ignore unknown

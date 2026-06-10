@@ -417,11 +417,7 @@ void main() {
           ti: 1,
           ken: 0,
         ),
-        newConfig: const MeterConfigAmendment(
-          toSgc: 234567,
-          toKrn: 2,
-          toTi: 1,
-        ),
+        newConfig: const MeterConfigAmendment(toSgc: 234567, toKrn: 2, toTi: 1),
       );
 
       expect(tokens, hasLength(2));
@@ -470,11 +466,7 @@ void main() {
           ti: 1,
           ken: 0,
         ),
-        newConfig: const MeterConfigAmendment(
-          toSgc: 234567,
-          toKrn: 2,
-          toTi: 1,
-        ),
+        newConfig: const MeterConfigAmendment(toSgc: 234567, toKrn: 2, toTi: 1),
       );
 
       expect(tokens.map((t) => t.subclass).toList(), [3, 4, 8, 9]);
@@ -524,6 +516,115 @@ void main() {
         ),
         throwsA(isA<PrismApiException>()),
       );
+    });
+
+    test('ping echoes the input string', () async {
+      final server = await _FakeThriftServer.bind({
+        'ping': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(TMessage('ping', TMessageType.reply, call.seqId));
+          w.writeFieldBegin(TType.string, 0);
+          w.writeString('pong:hello');
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      final res = await client.ping(sleepMs: 0, echo: 'hello');
+      expect(res, 'pong:hello');
+    });
+
+    test('getStatus decodes a list of NodeStatus with info map + alerts',
+        () async {
+      final server = await _FakeThriftServer.bind({
+        'getStatus': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('getStatus', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 2);
+
+          // Node 0: 2-entry info, 1 alert.
+          w.writeFieldBegin(TType.map, 1);
+          w.writeMapBegin(TType.string, TType.string, 2);
+          w.writeString('host');
+          w.writeString('prism-0');
+          w.writeString('version');
+          w.writeString('2.5.1');
+          w.writeFieldBegin(TType.list, 2);
+          w.writeListBegin(TType.struct, 1);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('LOW_DISK');
+          w.writeFieldBegin(TType.string, 2);
+          w.writeString('Disk usage above 80%');
+          w.writeFieldStop();
+          w.writeFieldStop(); // end NodeStatus 0
+
+          // Node 1: empty info, no alerts.
+          w.writeFieldBegin(TType.map, 1);
+          w.writeMapBegin(TType.string, TType.string, 0);
+          w.writeFieldBegin(TType.list, 2);
+          w.writeListBegin(TType.struct, 0);
+          w.writeFieldStop(); // end NodeStatus 1
+
+          w.writeFieldStop(); // end getStatus_result
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      final nodes = await client.getStatus(messageId: 'r', accessToken: 'jwt');
+      expect(nodes, hasLength(2));
+      expect(nodes[0].info, {'host': 'prism-0', 'version': '2.5.1'});
+      expect(nodes[0].alerts, hasLength(1));
+      expect(nodes[0].alerts.first.eCode, 'LOW_DISK');
+      expect(nodes[0].alerts.first.eMsgEn, 'Disk usage above 80%');
+      expect(nodes[1].info, isEmpty);
+      expect(nodes[1].alerts, isEmpty);
+    });
+
+    test('fetchTokenResult replays a prior issue\'s tokens', () async {
+      final server = await _FakeThriftServer.bind({
+        'fetchTokenResult': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('fetchTokenResult', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 1);
+          w.writeFieldBegin(TType.string, 20); // description
+          w.writeString('Credit:Electricity');
+          w.writeFieldBegin(TType.string, 22); // scaledAmount
+          w.writeString('12.34');
+          w.writeFieldBegin(TType.string, 30); // tokenDec
+          w.writeString('12345678901234567890');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      final tokens = await client.fetchTokenResult(
+        messageId: 'r2',
+        accessToken: 'jwt',
+        reqMessageId: 'orig-req-1',
+      );
+      expect(tokens, hasLength(1));
+      expect(tokens.first.description, 'Credit:Electricity');
+      expect(tokens.first.scaledAmount, '12.34');
+      expect(tokens.first.tokenDec, '12345678901234567890');
     });
   });
 }

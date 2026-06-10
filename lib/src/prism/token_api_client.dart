@@ -11,12 +11,19 @@
 ///     4 for MISTY1; must be applied as a coordinated set)
 ///   - `verifyToken(messageId, accessToken, meterConfig, tokenDec)` →
 ///     returns `VerifyResult`
+///   - `ping(sleepMs, echo)` → returns the echo verbatim (liveness)
+///   - `getStatus(messageId, accessToken)` → returns
+///     `List<PrismNodeStatus>` (per-node info + alerts)
+///   - `fetchTokenResult(messageId, accessToken, reqMessageId)` →
+///     returns `List<PrismToken>` (idempotency replay for a prior
+///     issue request)
 ///
 /// Struct field IDs + types are taken verbatim from the Java
 /// Thrift-generated reference (`TokenApi.java`, `SessionOptions.java`,
 /// `SignInResult.java`, `MeterConfigIn.java`, `MeterConfigAmendment.java`,
-/// `Token.java`, `VerifyResult.java`, `ApiException.java`). See the
-/// package doc on `thrift_binary_protocol.dart` for the location.
+/// `Token.java`, `VerifyResult.java`, `NodeStatus.java`, `Alert.java`,
+/// `ApiException.java`). See the package doc on
+/// `thrift_binary_protocol.dart` for the location.
 library;
 
 import 'dart:async';
@@ -373,6 +380,73 @@ class VerifyResult {
   }
 }
 
+/// `Alert` — single status alert entry inside a [PrismNodeStatus].
+class PrismAlert {
+  final String eCode; // (1)
+  final String eMsgEn; // (2)
+
+  const PrismAlert({required this.eCode, required this.eMsgEn});
+
+  static PrismAlert readFrom(BinaryReader r) {
+    String eCode = '';
+    String eMsgEn = '';
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 1 && type == TType.string) {
+        eCode = r.readString();
+      } else if (id == 2 && type == TType.string) {
+        eMsgEn = r.readString();
+      } else {
+        r.skip(type);
+      }
+    }
+    return PrismAlert(eCode: eCode, eMsgEn: eMsgEn);
+  }
+}
+
+/// `NodeStatus` — what `getStatus` returns per Prism node.
+class PrismNodeStatus {
+  final Map<String, String> info; // (1) MAP<STRING,STRING>
+  final List<PrismAlert> alerts; // (2) LIST<Alert>
+
+  const PrismNodeStatus({required this.info, required this.alerts});
+
+  static PrismNodeStatus readFrom(BinaryReader r) {
+    final info = <String, String>{};
+    final alerts = <PrismAlert>[];
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 1 && type == TType.map) {
+        final (kt, vt, n) = r.readMapBegin();
+        if (kt != TType.string || vt != TType.string) {
+          throw TProtocolException(
+            'NodeStatus.info: expected map<string,string>, got <$kt,$vt>',
+          );
+        }
+        for (var i = 0; i < n; i++) {
+          final k = r.readString();
+          info[k] = r.readString();
+        }
+      } else if (id == 2 && type == TType.list) {
+        final (elemType, n) = r.readListBegin();
+        if (elemType != TType.struct) {
+          throw TProtocolException(
+            'NodeStatus.alerts: expected list<struct>, got elem $elemType',
+          );
+        }
+        for (var i = 0; i < n; i++) {
+          alerts.add(PrismAlert.readFrom(r));
+        }
+      } else {
+        r.skip(type);
+      }
+    }
+    return PrismNodeStatus(info: info, alerts: alerts);
+  }
+}
+
 // ---- Client ---------------------------------------------------------
 
 /// Stateful Prism TokenApi client. One instance per concurrent
@@ -618,6 +692,152 @@ class TokenApiClient {
       throw const TApplicationException(
         TApplicationException.missingResult,
         'verifyToken: success field missing',
+      );
+    }
+    return success;
+  }
+
+  // -- ping ---------------------------------------------------------
+
+  /// Round-trip echo for liveness checks. The server sleeps for
+  /// [sleepMs] then returns [echo] verbatim. Field IDs: sleepMs(1
+  /// I32), echo(2 STRING). Reply: success(0 STRING).
+  Future<String> ping({required int sleepMs, required String echo}) async {
+    final w = BinaryWriter();
+    final seq = ++_seq;
+    w.writeMessageBegin(TMessage('ping', TMessageType.call, seq));
+    w.writeFieldBegin(TType.i32, 1);
+    w.writeI32(sleepMs);
+    w.writeFieldBegin(TType.string, 2);
+    w.writeString(echo);
+    w.writeFieldStop();
+    await _t.writeFrame(w.takeBytes());
+
+    final r = await _readReplyStruct('ping', seq);
+    String? success;
+    PrismApiException? ex;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 0 && type == TType.string) {
+        success = r.readString();
+      } else if (id == 1 && type == TType.struct) {
+        ex = PrismApiException.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    if (ex != null) throw ex;
+    if (success == null) {
+      throw const TApplicationException(
+        TApplicationException.missingResult,
+        'ping: success field missing',
+      );
+    }
+    return success;
+  }
+
+  // -- getStatus ----------------------------------------------------
+
+  /// Per-node status snapshot for the Prism cluster. Each entry
+  /// holds an arbitrary `info` map (e.g. host/version/uptime) plus a
+  /// list of active [PrismAlert]s.
+  Future<List<PrismNodeStatus>> getStatus({
+    required String messageId,
+    required String accessToken,
+  }) async {
+    final w = BinaryWriter();
+    final seq = ++_seq;
+    w.writeMessageBegin(TMessage('getStatus', TMessageType.call, seq));
+    w.writeFieldBegin(TType.string, 1);
+    w.writeString(messageId);
+    w.writeFieldBegin(TType.string, 2);
+    w.writeString(accessToken);
+    w.writeFieldStop();
+    await _t.writeFrame(w.takeBytes());
+
+    final r = await _readReplyStruct('getStatus', seq);
+    List<PrismNodeStatus>? success;
+    PrismApiException? ex;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 0 && type == TType.list) {
+        final (elemType, n) = r.readListBegin();
+        if (elemType != TType.struct) {
+          throw TProtocolException(
+            'getStatus: expected list<struct>, got elem $elemType',
+          );
+        }
+        success = <PrismNodeStatus>[
+          for (var i = 0; i < n; i++) PrismNodeStatus.readFrom(r),
+        ];
+      } else if (id == 1 && type == TType.struct) {
+        ex = PrismApiException.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    if (ex != null) throw ex;
+    if (success == null) {
+      throw const TApplicationException(
+        TApplicationException.missingResult,
+        'getStatus: success field missing',
+      );
+    }
+    return success;
+  }
+
+  // -- fetchTokenResult ---------------------------------------------
+
+  /// Re-fetch the tokens previously issued for [reqMessageId]. Used
+  /// when the original call timed out / disconnected before the
+  /// reply could be read — Prism keeps a short-lived idempotency
+  /// cache keyed by the original request's messageId.
+  Future<List<PrismToken>> fetchTokenResult({
+    required String messageId,
+    required String accessToken,
+    required String reqMessageId,
+  }) async {
+    final w = BinaryWriter();
+    final seq = ++_seq;
+    w.writeMessageBegin(TMessage('fetchTokenResult', TMessageType.call, seq));
+    w.writeFieldBegin(TType.string, 1);
+    w.writeString(messageId);
+    w.writeFieldBegin(TType.string, 2);
+    w.writeString(accessToken);
+    w.writeFieldBegin(TType.string, 3);
+    w.writeString(reqMessageId);
+    w.writeFieldStop();
+    await _t.writeFrame(w.takeBytes());
+
+    final r = await _readReplyStruct('fetchTokenResult', seq);
+    List<PrismToken>? success;
+    PrismApiException? ex;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 0 && type == TType.list) {
+        final (elemType, n) = r.readListBegin();
+        if (elemType != TType.struct) {
+          throw TProtocolException(
+            'fetchTokenResult: expected list<struct>, got elem $elemType',
+          );
+        }
+        success = <PrismToken>[
+          for (var i = 0; i < n; i++) PrismToken.readFrom(r),
+        ];
+      } else if (id == 1 && type == TType.struct) {
+        ex = PrismApiException.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    if (ex != null) throw ex;
+    if (success == null) {
+      throw const TApplicationException(
+        TApplicationException.missingResult,
+        'fetchTokenResult: success field missing',
       );
     }
     return success;
