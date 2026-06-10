@@ -6,6 +6,12 @@
 /// or
 ///   dart run bin/server.dart
 ///
+/// Configuration is loaded from `.env` in the current working directory
+/// (see `lib/src/server/app_env.dart` and `.env.example`). Anything
+/// set in the actual process environment overrides the file, so the
+/// integration-test runner can still inject per-run values via
+/// Symfony Process.
+///
 /// Environment variables:
 ///   PORT                — TCP port to bind (default 2000)
 ///   HOST                — bind address       (default 0.0.0.0)
@@ -39,6 +45,7 @@ import 'dart:io';
 
 import 'package:nectar_sts_dart/nectar_sts_dart.dart';
 import 'package:nectar_sts_dart/src/server/api_server.dart';
+import 'package:nectar_sts_dart/src/server/app_env.dart';
 import 'package:nectar_sts_dart/src/server/database.dart';
 import 'package:nectar_sts_dart/src/server/db_meter_registry.dart';
 import 'package:nectar_sts_dart/src/server/db_vending_log.dart';
@@ -49,7 +56,10 @@ const _defaultLogPath = 'vending.json';
 const _defaultRegistryPath = 'meters.json';
 
 Future<void> main(List<String> args) async {
-  final env = Platform.environment;
+  final env = AppEnv.environment;
+  if (AppEnv.envFilePath.isNotEmpty) {
+    stdout.writeln('[info] loaded env file: ${AppEnv.envFilePath}');
+  }
   final port = int.tryParse(env['PORT'] ?? '') ?? 2000;
   final host = env['HOST'] ?? '0.0.0.0';
   final keyHex = (env['VENDING_KEY_HEX'] ?? _defaultVendingKeyHex).trim();

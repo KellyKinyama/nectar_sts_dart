@@ -28,9 +28,9 @@
 /// Pattern lifted from `C:\www\dart\dart-ari\lib\ari\api\database.dart`.
 library;
 
-import 'dart:io' show Platform;
-
 import 'package:eloquent/eloquent.dart';
+
+import 'app_env.dart';
 
 class Database {
   /// Pool size used when [STS_DB_POOL_SIZE] is not provided in the env.
@@ -58,10 +58,10 @@ class Database {
   /// `bin/server.dart` entry point uses this to decide between
   /// JSON-file and DB-backed registry / vending log.
   static bool get isConfigured =>
-      (Platform.environment['STS_DB_HOST'] ?? '').trim().isNotEmpty;
+      (AppEnv.get('STS_DB_HOST') ?? '').trim().isNotEmpty;
 
   static Future<Connection> _initialize() async {
-    final env = Platform.environment;
+    final env = AppEnv.environment;
     final host = (env['STS_DB_HOST'] ?? '127.0.0.1').trim();
     final port = (env['STS_DB_PORT'] ?? '3306').trim();
     final db = (env['STS_DB_DATABASE'] ?? 'sts_vending').trim();

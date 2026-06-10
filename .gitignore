@@ -2,3 +2,9 @@
 .packages
 pubspec.lock
 build/
+
+# Local environment overrides. Use .env.example as the committed template.
+.env
+.env.local
+vending.json
+meters.json
