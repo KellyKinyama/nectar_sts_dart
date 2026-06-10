@@ -65,8 +65,8 @@ Future<void> main(List<String> args) async {
   final keyHex = (env['VENDING_KEY_HEX'] ?? _defaultVendingKeyHex).trim();
   final bearer = env['NECTAR_API_TOKEN'];
   final logPath = (env['VENDING_LOG_FILE'] ?? _defaultLogPath).trim();
-  final registryPath =
-      (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath).trim();
+  final registryPath = (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath)
+      .trim();
 
   if (keyHex == _defaultVendingKeyHex) {
     stderr.writeln(

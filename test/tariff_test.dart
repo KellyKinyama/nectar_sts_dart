@@ -34,24 +34,27 @@ void main() {
       expect(b.lookup('01'), isNull);
     });
 
-    test('single fallback tariff via TARIFF_PRICE_PER_KWH + TARIFF_CURRENCY',
-        () {
-      final b = TariffBook.fromEnv({
-        'TARIFF_PRICE_PER_KWH': '24.5',
-        'TARIFF_CURRENCY': 'kes',
-        'TARIFF_ADMIN_FEE': '5',
-      });
-      expect(b.isEmpty, isFalse);
-      final t = b.lookup('07');
-      expect(t, isNotNull);
-      expect(t!.currency, 'KES'); // upper-cased
-      expect(t.pricePerKwh, 24.5);
-      expect(t.adminFee, 5);
-    });
+    test(
+      'single fallback tariff via TARIFF_PRICE_PER_KWH + TARIFF_CURRENCY',
+      () {
+        final b = TariffBook.fromEnv({
+          'TARIFF_PRICE_PER_KWH': '24.5',
+          'TARIFF_CURRENCY': 'kes',
+          'TARIFF_ADMIN_FEE': '5',
+        });
+        expect(b.isEmpty, isFalse);
+        final t = b.lookup('07');
+        expect(t, isNotNull);
+        expect(t!.currency, 'KES'); // upper-cased
+        expect(t.pricePerKwh, 24.5);
+        expect(t.adminFee, 5);
+      },
+    );
 
     test('TARIFF_TABLE picks per-index entries before falling back', () {
       final b = TariffBook.fromEnv({
-        'TARIFF_TABLE': '{"01":{"price_per_kwh":24,"currency":"KES"},'
+        'TARIFF_TABLE':
+            '{"01":{"price_per_kwh":24,"currency":"KES"},'
             '"02":{"price_per_kwh":1444,"currency":"IDR","admin_fee":2500}}',
         'TARIFF_PRICE_PER_KWH': '100',
         'TARIFF_CURRENCY': 'USD',

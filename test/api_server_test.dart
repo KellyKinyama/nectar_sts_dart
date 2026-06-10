@@ -7,25 +7,25 @@ import 'package:shelf/shelf.dart';
 import 'package:test/test.dart';
 
 VirtualHsm _hsm() => VirtualHsm(
-      VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
-    );
+  VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+);
 
 Map<String, dynamic> _baseParams() => {
-      'decoder_key_generation_algorithm': '02',
-      'encryption_algorithm': 'sta',
-      'key_type': 2,
-      'supply_group_code': '123456',
-      'tariff_index': '07',
-      'key_revision_no': 1,
-      'issuer_identification_no': '600727',
-      'decoder_reference_number': '12345678901',
-      'class': '0',
-      'subclass': '0',
-      'amount': 25.5,
-      'token_id': '2024-06-01T12:00:00Z',
-      'random_no': 7,
-      'base_date': '1993',
-    };
+  'decoder_key_generation_algorithm': '02',
+  'encryption_algorithm': 'sta',
+  'key_type': 2,
+  'supply_group_code': '123456',
+  'tariff_index': '07',
+  'key_revision_no': 1,
+  'issuer_identification_no': '600727',
+  'decoder_reference_number': '12345678901',
+  'class': '0',
+  'subclass': '0',
+  'amount': 25.5,
+  'token_id': '2024-06-01T12:00:00Z',
+  'random_no': 7,
+  'base_date': '1993',
+};
 
 Future<Map<String, dynamic>> _post(
   Handler handler,
@@ -202,8 +202,10 @@ void main() {
       final log = VendingLog();
       final handler = buildApiHandler(_hsm(), log: log);
       final gen = await _post(handler, '/v1/tokens', _baseParams());
-      final tokenNo = (((gen['body'] as Map)['data'] as Map)['token'] as List)
-          .first['token_no'] as String;
+      final tokenNo =
+          (((gen['body'] as Map)['data'] as Map)['token'] as List)
+                  .first['token_no']
+              as String;
 
       final hit = await _get(handler, '/v1/tokens/$tokenNo');
       expect(hit['status'], 200);
@@ -266,19 +268,19 @@ void main() {
 
   group('meter registry', () {
     Map<String, dynamic> _registerBody() => {
-          'serial': 'METER-001',
-          'subscriber_label': 'Acme Bakery',
-          'encryption_algorithm': 'sta',
-          'identity': {
-            'issuer_identification_no': '600727',
-            'decoder_reference_number': '12345678901',
-            'key_type': 2,
-            'supply_group_code': '123456',
-            'tariff_index': '07',
-            'key_revision_no': 1,
-            'decoder_key_generation_algorithm': '02',
-          },
-        };
+      'serial': 'METER-001',
+      'subscriber_label': 'Acme Bakery',
+      'encryption_algorithm': 'sta',
+      'identity': {
+        'issuer_identification_no': '600727',
+        'decoder_reference_number': '12345678901',
+        'key_type': 2,
+        'supply_group_code': '123456',
+        'tariff_index': '07',
+        'key_revision_no': 1,
+        'decoder_key_generation_algorithm': '02',
+      },
+    };
 
     test('POST /v1/meters registers and GET /v1/meters lists it', () async {
       final reg = MeterRegistry();
@@ -443,52 +445,49 @@ void main() {
 
   group('tariff / pricing', () {
     TariffBook _book() => TariffBook(
-          byTariffIndex: {
-            '07': const Tariff(
-              currency: 'KES',
-              pricePerKwh: 24.0,
-            ),
-            '01': const Tariff(
-              currency: 'IDR',
-              pricePerKwh: 1444,
-              adminFee: 2500,
-            ),
-          },
-        );
+      byTariffIndex: {
+        '07': const Tariff(currency: 'KES', pricePerKwh: 24.0),
+        '01': const Tariff(currency: 'IDR', pricePerKwh: 1444, adminFee: 2500),
+      },
+    );
 
-    test('amount_money is converted to kWh and reported in pricing block',
-        () async {
-      final log = VendingLog();
-      final handler = buildApiHandler(_hsm(), log: log, tariffs: _book());
-      final body = _baseParams()
-        ..remove('amount')
-        ..['amount_money'] = 240.0; // KES at 24/kWh → 10 kWh
+    test(
+      'amount_money is converted to kWh and reported in pricing block',
+      () async {
+        final log = VendingLog();
+        final handler = buildApiHandler(_hsm(), log: log, tariffs: _book());
+        final body = _baseParams()
+          ..remove('amount')
+          ..['amount_money'] = 240.0; // KES at 24/kWh → 10 kWh
 
-      final r = await _post(handler, '/v1/tokens', body);
-      expect(r['status'], 200, reason: '${r['body']}');
-      final data = (r['body'] as Map)['data'] as Map;
-      final pricing = data['pricing'] as Map;
-      expect(pricing['currency'], 'KES');
-      expect(pricing['kwh'], closeTo(10.0, 1e-9));
-      expect(pricing['amount_money'], closeTo(240.0, 1e-9));
-      expect(pricing['total_money'], closeTo(240.0, 1e-9));
+        final r = await _post(handler, '/v1/tokens', body);
+        expect(r['status'], 200, reason: '${r['body']}');
+        final data = (r['body'] as Map)['data'] as Map;
+        final pricing = data['pricing'] as Map;
+        expect(pricing['currency'], 'KES');
+        expect(pricing['kwh'], closeTo(10.0, 1e-9));
+        expect(pricing['amount_money'], closeTo(240.0, 1e-9));
+        expect(pricing['total_money'], closeTo(240.0, 1e-9));
 
-      // Persisted record carries currency + cash total.
-      expect(log.issues.single.currency, 'KES');
-      expect(log.issues.single.amountMoney, closeTo(240.0, 1e-9));
-      expect(log.issues.single.amountKwh, closeTo(10.0, 1e-9));
-    });
+        // Persisted record carries currency + cash total.
+        expect(log.issues.single.currency, 'KES');
+        expect(log.issues.single.amountMoney, closeTo(240.0, 1e-9));
+        expect(log.issues.single.amountKwh, closeTo(10.0, 1e-9));
+      },
+    );
 
-    test('plain amount request with a tariff surfaces money in response',
-        () async {
-      final handler = buildApiHandler(_hsm(), tariffs: _book());
-      final r = await _post(handler, '/v1/tokens', _baseParams());
-      expect(r['status'], 200);
-      final pricing = ((r['body'] as Map)['data'] as Map)['pricing'] as Map;
-      expect(pricing['currency'], 'KES');
-      expect(pricing['kwh'], closeTo(25.5, 1e-9));
-      expect(pricing['amount_money'], closeTo(25.5 * 24.0, 1e-9));
-    });
+    test(
+      'plain amount request with a tariff surfaces money in response',
+      () async {
+        final handler = buildApiHandler(_hsm(), tariffs: _book());
+        final r = await _post(handler, '/v1/tokens', _baseParams());
+        expect(r['status'], 200);
+        final pricing = ((r['body'] as Map)['data'] as Map)['pricing'] as Map;
+        expect(pricing['currency'], 'KES');
+        expect(pricing['kwh'], closeTo(25.5, 1e-9));
+        expect(pricing['amount_money'], closeTo(25.5 * 24.0, 1e-9));
+      },
+    );
 
     test('per-index tariff with admin fee is respected', () async {
       final handler = buildApiHandler(_hsm(), tariffs: _book());
