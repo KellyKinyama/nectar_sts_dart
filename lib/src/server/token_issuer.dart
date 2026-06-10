@@ -277,10 +277,71 @@ class VirtualHsmIssuer implements TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support token verification.',
-      );
+  ) async {
+    try {
+      final token = hsm.decodeToken(requestId, tokenNo, params);
+      return {
+        'validationResult': 'Valid',
+        'isValid': true,
+        'token': _virtualHsmVerifyTokenShape(tokenNo, token),
+      };
+    } on CrcError catch (e) {
+      return {
+        'validationResult': 'InvalidCRC',
+        'isValid': false,
+        'reason': e.message,
+      };
+    } on KeyExpiredError catch (e) {
+      return {
+        'validationResult': 'KeyExpired',
+        'isValid': false,
+        'reason': e.message,
+      };
+    } on KeyTypeError catch (e) {
+      return {
+        'validationResult': 'KeyTypeMismatch',
+        'isValid': false,
+        'reason': e.message,
+      };
+    } on TokenError catch (e) {
+      return {
+        'validationResult': 'InvalidToken',
+        'isValid': false,
+        'reason': e.message,
+      };
+    } on OldTokenError catch (e) {
+      return {
+        'validationResult': 'OldToken',
+        'isValid': false,
+        'reason': e.message,
+      };
+    } on UsedTokenError catch (e) {
+      return {
+        'validationResult': 'UsedToken',
+        'isValid': false,
+        'reason': e.message,
+      };
+    } on RangeError_ catch (e) {
+      return {
+        'validationResult': 'OutOfRange',
+        'isValid': false,
+        'reason': e.message,
+      };
+    }
+  }
+}
+
+Map<String, Object?> _virtualHsmVerifyTokenShape(String tokenNo, Token token) {
+  final amount =
+      token is TransferElectricityCreditToken && token.amountPurchased != null
+          ? token.amountPurchased!.unitsPurchased.toString()
+          : '';
+  return {
+    'tokenNo': tokenNo,
+    'subclass': token.tokenSubClass?.bitString.value ?? 0,
+    'description': token.type,
+    'scaledAmount': amount,
+  };
 }
 
 /// Connection parameters for a remote Prism HSM. Mirrors the

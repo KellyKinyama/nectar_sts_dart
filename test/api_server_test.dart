@@ -330,19 +330,53 @@ void main() {
     );
 
     test(
-      'POST /v1/tokens/<tokenNo>/verify -> 501 NotImplemented for VirtualHsm',
+      'POST /v1/tokens/<tokenNo>/verify -> Valid round-trip for VirtualHsm',
       () async {
         final handler = buildApiHandler(_hsm());
-        final r = await _post(
-          handler,
-          '/v1/tokens/12345678901234567890/verify',
-          _baseParams(),
-        );
-        expect(r['status'], 501);
-        expect(
-          ((r['body'] as Map)['status'] as Map)['message'],
-          contains('token verification'),
-        );
+        final params = _baseParams();
+
+        final gen = await _post(handler, '/v1/tokens', params);
+        expect(gen['status'], 200, reason: 'generate failed: ${gen['body']}');
+        final tokenNo = (((gen['body'] as Map)['data'] as Map)['token'] as List)
+            .first as Map;
+        final tn = tokenNo['token_no'] as String;
+
+        final r = await _post(handler, '/v1/tokens/$tn/verify', params);
+        expect(r['status'], 200, reason: 'verify failed: ${r['body']}');
+        final data = (r['body'] as Map)['data'] as Map;
+        expect(data['tokenNo'], tn);
+        expect(data['validationResult'], 'Valid');
+        expect(data['isValid'], true);
+        final tok = data['token'] as Map;
+        expect(tok['tokenNo'], tn);
+        expect(tok['subclass'], 0);
+        expect(tok['description'], 'Electricity_00');
+        expect(tok['scaledAmount'], isNotEmpty);
+      },
+    );
+
+    test(
+      'POST /v1/tokens/<tokenNo>/verify -> Invalid (CRC) for tampered token',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final params = _baseParams();
+
+        final gen = await _post(handler, '/v1/tokens', params);
+        expect(gen['status'], 200);
+        final tn = ((((gen['body'] as Map)['data'] as Map)['token'] as List)
+            .first as Map)['token_no'] as String;
+        // Twiddle a single digit so the CRC fails.
+        final tampered = tn.substring(0, 19) + (tn[19] == '0' ? '1' : '0');
+
+        final r = await _post(handler, '/v1/tokens/$tampered/verify', params);
+        expect(r['status'], 200, reason: 'verify failed: ${r['body']}');
+        final data = (r['body'] as Map)['data'] as Map;
+        expect(data['tokenNo'], tampered);
+        expect(data['isValid'], false);
+        expect(data['validationResult'], isA<String>());
+        expect(data['validationResult'], isNot('Valid'));
+        expect(data['reason'], isA<String>());
+        expect(data.containsKey('token'), isFalse);
       },
     );
 

@@ -62,8 +62,7 @@ class _FakeServer {
 }
 
 void main() {
-  test(
-      'PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
+  test('PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
       'TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -136,8 +135,7 @@ void main() {
     expect(t.tokenIdentifier!.bitString.value, 12345);
   });
 
-  test(
-      'PrismIssuer.generateToken throws NotImplementedException for '
+  test('PrismIssuer.generateToken throws NotImplementedException for '
       'non-electricity classes', () async {
     final issuer = PrismIssuer.forTesting(
       const PrismConfig(
@@ -160,8 +158,7 @@ void main() {
     );
   });
 
-  test(
-      'PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
+  test('PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
       'a TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -216,16 +213,16 @@ void main() {
       server.socketFactory,
     );
 
-    final decoded =
-        await issuer.decodeToken('req-decode-1', '11122233344455566677', {
-      VirtualHsmParams.tokenClass: '0',
-      VirtualHsmParams.tokenSubclass: '0',
-      VirtualHsmParams.decoderReferenceNumber: '56000000001',
-      VirtualHsmParams.supplyGroupCode: '123456',
-      VirtualHsmParams.tariffIndex: '1',
-      VirtualHsmParams.keyRevisionNo: '1',
-      VirtualHsmParams.encryptionAlgorithm: 'sta',
-    });
+    final decoded = await issuer
+        .decodeToken('req-decode-1', '11122233344455566677', {
+          VirtualHsmParams.tokenClass: '0',
+          VirtualHsmParams.tokenSubclass: '0',
+          VirtualHsmParams.decoderReferenceNumber: '56000000001',
+          VirtualHsmParams.supplyGroupCode: '123456',
+          VirtualHsmParams.tariffIndex: '1',
+          VirtualHsmParams.keyRevisionNo: '1',
+          VirtualHsmParams.encryptionAlgorithm: 'sta',
+        });
 
     expect(decoded, isA<TransferElectricityCreditToken>());
     final t = decoded as TransferElectricityCreditToken;
@@ -324,10 +321,10 @@ void main() {
     () async {
       // No fake server bound; connect to a port nothing is listening on.
       Future<Socket> failingFactory() => Socket.connect(
-            InternetAddress.loopbackIPv4,
-            1, // privileged port nothing in CI binds to
-            timeout: const Duration(milliseconds: 200),
-          );
+        InternetAddress.loopbackIPv4,
+        1, // privileged port nothing in CI binds to
+        timeout: const Duration(milliseconds: 200),
+      );
 
       final issuer = PrismIssuer.forTesting(
         const PrismConfig(
@@ -556,8 +553,7 @@ void main() {
     },
   );
 
-  test(
-      'PrismIssuer.issueMeterTestToken forwards subclass/control/mfrcode '
+  test('PrismIssuer.issueMeterTestToken forwards subclass/control/mfrcode '
       'and maps the reply struct', () async {
     late int observedSubclass;
     late int observedControl;
@@ -642,8 +638,7 @@ void main() {
     expect(token['tokenHex'], '0xCAFEBABE');
   });
 
-  test(
-      'PrismIssuer.issueCurrencyCreditToken scales amount by 100000 '
+  test('PrismIssuer.issueCurrencyCreditToken scales amount by 100000 '
       'and forwards subclass', () async {
     late int observedSubclass;
     late double observedTransferAmount;
@@ -820,91 +815,85 @@ void main() {
     },
   );
 
-  test(
-    'PrismIssuer.verifyToken returns raw {validationResult,isValid,token} '
-    'and does NOT throw on non-Valid results',
-    () async {
-      late String observedTokenDec;
-      final server = await _FakeServer.bind({
-        'signInWithPassword': (call, args) {
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
-          );
-          w.writeFieldBegin(TType.struct, 0);
-          w.writeFieldBegin(TType.string, 1);
-          w.writeString('jwt-verify');
-          w.writeFieldStop();
-          w.writeFieldStop();
-          return w.takeBytes();
-        },
-        'verifyToken': (call, args) {
-          observedTokenDec = '';
-          while (true) {
-            final (type, id) = args.readFieldBegin();
-            if (type == TType.stop) break;
-            if (id == 4 && type == TType.string) {
-              observedTokenDec = args.readString();
-            } else {
-              args.skip(type);
-            }
+  test('PrismIssuer.verifyToken returns raw {validationResult,isValid,token} '
+      'and does NOT throw on non-Valid results', () async {
+    late String observedTokenDec;
+    final server = await _FakeServer.bind({
+      'signInWithPassword': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('jwt-verify');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+      'verifyToken': (call, args) {
+        observedTokenDec = '';
+        while (true) {
+          final (type, id) = args.readFieldBegin();
+          if (type == TType.stop) break;
+          if (id == 4 && type == TType.string) {
+            observedTokenDec = args.readString();
+          } else {
+            args.skip(type);
           }
+        }
 
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('verifyToken', TMessageType.reply, call.seqId),
-          );
-          w.writeFieldBegin(TType.struct, 0);
-          w.writeFieldBegin(TType.string, 1);
-          w.writeString('Expired');
-          w.writeFieldBegin(TType.struct, 2);
-          w.writeFieldBegin(TType.i16, 11);
-          w.writeI16(0);
-          w.writeFieldBegin(TType.string, 20);
-          w.writeString('Credit:Electricity');
-          w.writeFieldBegin(TType.string, 22);
-          w.writeString('12.5');
-          w.writeFieldBegin(TType.string, 30);
-          w.writeString('99988877766655544433');
-          w.writeFieldStop();
-          w.writeFieldStop();
-          w.writeFieldStop();
-          return w.takeBytes();
-        },
-      });
-      addTearDown(server.close);
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('verifyToken', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('Expired');
+        w.writeFieldBegin(TType.struct, 2);
+        w.writeFieldBegin(TType.i16, 11);
+        w.writeI16(0);
+        w.writeFieldBegin(TType.string, 20);
+        w.writeString('Credit:Electricity');
+        w.writeFieldBegin(TType.string, 22);
+        w.writeString('12.5');
+        w.writeFieldBegin(TType.string, 30);
+        w.writeString('99988877766655544433');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+    });
+    addTearDown(server.close);
 
-      final issuer = PrismIssuer.forTesting(
-        const PrismConfig(
-          host: '127.0.0.1',
-          port: 0,
-          realm: 'STS',
-          username: 'vendor',
-          password: 'pw',
-        ),
-        server.socketFactory,
-      );
+    final issuer = PrismIssuer.forTesting(
+      const PrismConfig(
+        host: '127.0.0.1',
+        port: 0,
+        realm: 'STS',
+        username: 'vendor',
+        password: 'pw',
+      ),
+      server.socketFactory,
+    );
 
-      final result = await issuer.verifyToken(
-        'req-verify',
-        '99988877766655544433',
-        {
+    final result = await issuer
+        .verifyToken('req-verify', '99988877766655544433', {
           VirtualHsmParams.decoderReferenceNumber: '56000000001',
           VirtualHsmParams.supplyGroupCode: '123456',
           VirtualHsmParams.tariffIndex: '1',
           VirtualHsmParams.keyRevisionNo: '1',
           VirtualHsmParams.encryptionAlgorithm: 'sta',
-        },
-      );
+        });
 
-      expect(observedTokenDec, '99988877766655544433');
-      expect(result['validationResult'], 'Expired');
-      expect(result['isValid'], false);
-      final t = result['token'] as Map<String, Object?>;
-      expect(t['tokenNo'], '99988877766655544433');
-      expect(t['subclass'], 0);
-      expect(t['description'], 'Credit:Electricity');
-      expect(t['scaledAmount'], '12.5');
-    },
-  );
+    expect(observedTokenDec, '99988877766655544433');
+    expect(result['validationResult'], 'Expired');
+    expect(result['isValid'], false);
+    final t = result['token'] as Map<String, Object?>;
+    expect(t['tokenNo'], '99988877766655544433');
+    expect(t['subclass'], 0);
+    expect(t['description'], 'Credit:Electricity');
+    expect(t['scaledAmount'], '12.5');
+  });
 }
