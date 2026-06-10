@@ -92,6 +92,20 @@ class ApplyKeyChange2ndStaged extends ApplyResult {
   });
 }
 
+/// A 3rd Section Decoder Key Change Token (MISTY1) was accepted and
+/// stashed. Rotation waits for all four sections to arrive.
+class ApplyKeyChange3rdStaged extends ApplyResult {
+  final int supplyGroupCodeLowOrder;
+  const ApplyKeyChange3rdStaged({required this.supplyGroupCodeLowOrder});
+}
+
+/// A 4th Section Decoder Key Change Token (MISTY1) was accepted and
+/// stashed. Rotation waits for all four sections to arrive.
+class ApplyKeyChange4thStaged extends ApplyResult {
+  final int supplyGroupCodeHighOrder;
+  const ApplyKeyChange4thStaged({required this.supplyGroupCodeHighOrder});
+}
+
 /// Both halves of a decoder-key change have arrived; the meter
 /// rotated to the new key. Subsequent tokens are decoded under it.
 class ApplyKeyRotated extends ApplyResult {
@@ -100,12 +114,18 @@ class ApplyKeyRotated extends ApplyResult {
   final int keyExpiryNumber;
   final String newTariffIndex;
   final bool rolloverKeyChange;
+
+  /// New 6-digit Supply Group Code after a MISTY1 4-section rotation
+  /// (assembled from SGCHO|SGCLO). `null` for STA 2-section rotations,
+  /// which don't change the SGC.
+  final String? newSupplyGroupCode;
   const ApplyKeyRotated({
     required this.newKeyRevisionNumber,
     required this.newKeyType,
     required this.keyExpiryNumber,
     required this.newTariffIndex,
     required this.rolloverKeyChange,
+    this.newSupplyGroupCode,
   });
 }
 
@@ -307,7 +327,7 @@ class MeterIdentity {
 class VirtualMeter {
   MeterIdentity identity;
   Uint8List decoderKeyBytes;
-  final String encryptionAlgorithmName; // 'sta' | 'dea'
+  final String encryptionAlgorithmName; // 'sta' | 'dea' | 'misty1'
   double balanceKwh;
   final List<AppliedTokenRecord> appliedTokens;
   final List<AppliedManagementTokenRecord> appliedManagementTokens;
@@ -344,11 +364,25 @@ class VirtualMeter {
   // A real STS meter buffers exactly one in-flight 1st + one
   // in-flight 2nd section. The pair is applied (rotation) the
   // moment both have arrived. Anything else is rejected.
+  //
+  // For MISTY1, two additional staging slots hold the 3rd and 4th
+  // sections (NKMO2+SGCLO and NKMO1+SGCHO); rotation happens only
+  // when all four sections have arrived.
   PendingKctSection? _pending1st;
   PendingKctSection? _pending2nd;
+  PendingKctSection? _pending3rd;
+  PendingKctSection? _pending4th;
 
   PendingKctSection? get pending1stSection => _pending1st;
   PendingKctSection? get pending2ndSection => _pending2nd;
+  PendingKctSection? get pending3rdSection => _pending3rd;
+  PendingKctSection? get pending4thSection => _pending4th;
+
+  /// Sim-only: a real meter latches a tamper flag in NVRAM when its
+  /// case-open or magnetic-tamper sensors trip. The flag is cleared
+  /// only by a successful `ClearTamperCondition_25` token. Use
+  /// [tripTamper] in tests/demos to simulate the sensor firing.
+  bool tamperLatched;
 
   VirtualMeter({
     required this.identity,
@@ -365,14 +399,26 @@ class VirtualMeter {
     this.tariffRate,
     this.tamperConditionClearedAt,
     this.creditClearedAt,
+    this.tamperLatched = false,
     PendingKctSection? pending1stSection,
     PendingKctSection? pending2ndSection,
+    PendingKctSection? pending3rdSection,
+    PendingKctSection? pending4thSection,
   }) : appliedTokens = appliedTokens ?? <AppliedTokenRecord>[],
        appliedManagementTokens =
            appliedManagementTokens ?? <AppliedManagementTokenRecord>[],
        createdAt = createdAt ?? DateTime.now().toUtc(),
        _pending1st = pending1stSection,
-       _pending2nd = pending2ndSection;
+       _pending2nd = pending2ndSection,
+       _pending3rd = pending3rdSection,
+       _pending4th = pending4thSection;
+
+  /// Sim-only: simulate the meter's tamper sensors firing. Sets the
+  /// `tamperLatched` flag, which is cleared only by a successful
+  /// `ClearTamperCondition_25` token.
+  void tripTamper() {
+    tamperLatched = true;
+  }
 
   /// Factory: personalize a fresh meter from a vending key + identity.
   /// Mirrors what a utility's factory provisioning step would do.
@@ -460,6 +506,12 @@ class VirtualMeter {
     if (token is Set2ndSectionDecoderKeyToken) {
       return _stage2ndSection(token);
     }
+    if (token is Set3rdSectionDecoderKeyToken) {
+      return _stage3rdSection(token);
+    }
+    if (token is Set4thSectionDecoderKeyToken) {
+      return _stage4thSection(token);
+    }
     if (token is SetMaximumPowerLimitToken) {
       return _applyMaximumPowerLimit(tokenNo, token);
     }
@@ -514,7 +566,8 @@ class VirtualMeter {
       stagedAt: DateTime.now().toUtc(),
     );
     _pending1st = staged;
-    if (_pending2nd != null) return _tryRotate();
+    final maybeRotate = _maybeRotate();
+    if (maybeRotate != null) return maybeRotate;
     return ApplyKeyChange1stStaged(
       keyExpiryNumberHighOrder: staged.keyExpiryNumberHighOrder!,
       newKeyRevisionNumber: staged.newKeyRevisionNumber!,
@@ -531,10 +584,102 @@ class VirtualMeter {
       stagedAt: DateTime.now().toUtc(),
     );
     _pending2nd = staged;
-    if (_pending1st != null) return _tryRotate();
+    final maybeRotate = _maybeRotate();
+    if (maybeRotate != null) return maybeRotate;
     return ApplyKeyChange2ndStaged(
       keyExpiryNumberLowOrder: staged.keyExpiryNumberLowOrder!,
       newTariffIndex: staged.newTariffIndex!,
+    );
+  }
+
+  ApplyResult _stage3rdSection(Set3rdSectionDecoderKeyToken t) {
+    final staged = PendingKctSection.third(
+      newKeyMiddleOrder2Bits: t.newKeyMiddleOrder2!.bitString.toPaddedBinary(),
+      supplyGroupCodeLowOrder: t.supplyGroupCodeLowOrder!.bitString.value,
+      stagedAt: DateTime.now().toUtc(),
+    );
+    _pending3rd = staged;
+    final maybeRotate = _maybeRotate();
+    if (maybeRotate != null) return maybeRotate;
+    return ApplyKeyChange3rdStaged(
+      supplyGroupCodeLowOrder: staged.supplyGroupCodeLowOrder!,
+    );
+  }
+
+  ApplyResult _stage4thSection(Set4thSectionDecoderKeyToken t) {
+    final staged = PendingKctSection.fourth(
+      newKeyMiddleOrder1Bits: t.newKeyMiddleOrder1!.bitString.toPaddedBinary(),
+      supplyGroupCodeHighOrder: t.supplyGroupCodeHighOrder!.bitString.value,
+      stagedAt: DateTime.now().toUtc(),
+    );
+    _pending4th = staged;
+    final maybeRotate = _maybeRotate();
+    if (maybeRotate != null) return maybeRotate;
+    return ApplyKeyChange4thStaged(
+      supplyGroupCodeHighOrder: staged.supplyGroupCodeHighOrder!,
+    );
+  }
+
+  /// Returns an [ApplyKeyRotated] iff every section needed for the
+  /// active EA's rotation has been staged. STA/DEA need 1st+2nd;
+  /// MISTY1 needs 1st+2nd+3rd+4th. Otherwise returns null and the
+  /// caller emits the per-section staged result.
+  ApplyResult? _maybeRotate() {
+    final isMisty1 = encryptionAlgorithmName.toLowerCase() == 'misty1';
+    if (isMisty1) {
+      if (_pending1st == null ||
+          _pending2nd == null ||
+          _pending3rd == null ||
+          _pending4th == null) {
+        return null;
+      }
+      return _rotateMisty1();
+    }
+    if (_pending1st == null || _pending2nd == null) return null;
+    return _tryRotate();
+  }
+
+  ApplyResult _rotateMisty1() {
+    final p1 = _pending1st!;
+    final p2 = _pending2nd!;
+    final p3 = _pending3rd!;
+    final p4 = _pending4th!;
+    final newKey = combineMisty1DecoderKey(
+      NewKeyHighOrder(BitString.fromBinary(p1.newKeyHighOrderBits!)),
+      NewKeyMiddleOrder2(BitString.fromBinary(p3.newKeyMiddleOrder2Bits!)),
+      NewKeyMiddleOrder1(BitString.fromBinary(p4.newKeyMiddleOrder1Bits!)),
+      NewKeyLowOrder(BitString.fromBinary(p2.newKeyLowOrderBits!)),
+    );
+    final newKen =
+        (p1.keyExpiryNumberHighOrder! << 4) | p2.keyExpiryNumberLowOrder!;
+    final newSgc24 =
+        (p4.supplyGroupCodeHighOrder! << 12) | p3.supplyGroupCodeLowOrder!;
+    final newSgcStr = newSgc24.toString().padLeft(6, '0');
+
+    decoderKeyBytes = Uint8List.fromList(newKey.keyData);
+    keyExpiryNumber = newKen;
+    identity = MeterIdentity(
+      issuerIdentificationNumber: identity.issuerIdentificationNumber,
+      individualAccountIdentificationNumber:
+          identity.individualAccountIdentificationNumber,
+      keyType: p1.newKeyType!,
+      supplyGroupCode: newSgcStr,
+      tariffIndex: p2.newTariffIndex!,
+      keyRevisionNumber: p1.newKeyRevisionNumber!,
+      decoderKeyGenerationAlgorithm: identity.decoderKeyGenerationAlgorithm,
+      baseDate: identity.baseDate,
+    );
+    _pending1st = null;
+    _pending2nd = null;
+    _pending3rd = null;
+    _pending4th = null;
+    return ApplyKeyRotated(
+      newKeyRevisionNumber: p1.newKeyRevisionNumber!,
+      newKeyType: p1.newKeyType!,
+      keyExpiryNumber: newKen,
+      newTariffIndex: p2.newTariffIndex!,
+      rolloverKeyChange: p1.rolloverKeyChange!,
+      newSupplyGroupCode: newSgcStr,
     );
   }
 
@@ -620,6 +765,7 @@ class VirtualMeter {
     final tid = t.tokenIdentifier!.bitString.value;
     final replay = _findManagementReplay(tid, t.type);
     if (replay != null) return replay;
+    tamperLatched = false;
     tamperConditionClearedAt = DateTime.now().toUtc();
     _recordManagementApply(tokenNo, t, tid, t.pad!.value);
     return ApplyTamperConditionCleared(tidMinutes: tid);
@@ -671,7 +817,7 @@ class VirtualMeter {
   // ---- persistence ---------------------------------------------
 
   Map<String, dynamic> toJson() => {
-    'schema': 'nectar_sts_dart.virtual_meter/v2',
+    'schema': 'nectar_sts_dart.virtual_meter/v3',
     'created_at': createdAt.toIso8601String(),
     'identity': identity.toJson(),
     'decoder_key_hex': _bytesToHex(decoderKeyBytes),
@@ -688,8 +834,11 @@ class VirtualMeter {
           .toIso8601String(),
     if (creditClearedAt != null)
       'credit_cleared_at': creditClearedAt!.toUtc().toIso8601String(),
+    if (tamperLatched) 'tamper_latched': true,
     if (_pending1st != null) 'pending_1st_section': _pending1st!.toJson(),
     if (_pending2nd != null) 'pending_2nd_section': _pending2nd!.toJson(),
+    if (_pending3rd != null) 'pending_3rd_section': _pending3rd!.toJson(),
+    if (_pending4th != null) 'pending_4th_section': _pending4th!.toJson(),
     'applied_tokens': appliedTokens.map((r) => r.toJson()).toList(),
     'applied_management_tokens': appliedManagementTokens
         .map((r) => r.toJson())
@@ -700,7 +849,8 @@ class VirtualMeter {
     final schema = j['schema'];
     if (schema != null &&
         schema != 'nectar_sts_dart.virtual_meter/v1' &&
-        schema != 'nectar_sts_dart.virtual_meter/v2') {
+        schema != 'nectar_sts_dart.virtual_meter/v2' &&
+        schema != 'nectar_sts_dart.virtual_meter/v3') {
       throw FormatException('Unsupported meter schema: $schema');
     }
     return VirtualMeter(
@@ -742,6 +892,7 @@ class VirtualMeter {
       creditClearedAt: j['credit_cleared_at'] is String
           ? DateTime.parse(j['credit_cleared_at'] as String)
           : null,
+      tamperLatched: j['tamper_latched'] == true,
       pending1stSection: j['pending_1st_section'] is Map<String, dynamic>
           ? PendingKctSection.fromJson(
               j['pending_1st_section'] as Map<String, dynamic>,
@@ -750,6 +901,16 @@ class VirtualMeter {
       pending2ndSection: j['pending_2nd_section'] is Map<String, dynamic>
           ? PendingKctSection.fromJson(
               j['pending_2nd_section'] as Map<String, dynamic>,
+            )
+          : null,
+      pending3rdSection: j['pending_3rd_section'] is Map<String, dynamic>
+          ? PendingKctSection.fromJson(
+              j['pending_3rd_section'] as Map<String, dynamic>,
+            )
+          : null,
+      pending4thSection: j['pending_4th_section'] is Map<String, dynamic>
+          ? PendingKctSection.fromJson(
+              j['pending_4th_section'] as Map<String, dynamic>,
             )
           : null,
     );
@@ -784,6 +945,8 @@ EncryptionAlgorithm _eaFromName(String name) {
       return StandardTransferAlgorithm();
     case 'dea':
       return DataEncryptionAlgorithm();
+    case 'misty1':
+      return Misty1EncryptionAlgorithm();
     default:
       throw InvalidTokenException('Unknown encryption_algorithm: $name');
   }
@@ -830,6 +993,14 @@ class PendingKctSection {
   final int? keyExpiryNumberLowOrder; // 0..15
   final String? newTariffIndex; // 2-digit decimal string
 
+  // ---- 3rd section fields (MISTY1) ----
+  final String? newKeyMiddleOrder2Bits; // 32-bit binary string (MSB-first)
+  final int? supplyGroupCodeLowOrder; // 0..0xFFF (12-bit value)
+
+  // ---- 4th section fields (MISTY1) ----
+  final String? newKeyMiddleOrder1Bits; // 32-bit binary string (MSB-first)
+  final int? supplyGroupCodeHighOrder; // 0..0xFFF (12-bit value)
+
   final DateTime stagedAt;
 
   const PendingKctSection._({
@@ -841,6 +1012,10 @@ class PendingKctSection {
     this.newKeyLowOrderBits,
     this.keyExpiryNumberLowOrder,
     this.newTariffIndex,
+    this.newKeyMiddleOrder2Bits,
+    this.supplyGroupCodeLowOrder,
+    this.newKeyMiddleOrder1Bits,
+    this.supplyGroupCodeHighOrder,
     required this.stagedAt,
   });
 
@@ -872,6 +1047,26 @@ class PendingKctSection {
     stagedAt: stagedAt,
   );
 
+  factory PendingKctSection.third({
+    required String newKeyMiddleOrder2Bits,
+    required int supplyGroupCodeLowOrder,
+    required DateTime stagedAt,
+  }) => PendingKctSection._(
+    newKeyMiddleOrder2Bits: newKeyMiddleOrder2Bits,
+    supplyGroupCodeLowOrder: supplyGroupCodeLowOrder,
+    stagedAt: stagedAt,
+  );
+
+  factory PendingKctSection.fourth({
+    required String newKeyMiddleOrder1Bits,
+    required int supplyGroupCodeHighOrder,
+    required DateTime stagedAt,
+  }) => PendingKctSection._(
+    newKeyMiddleOrder1Bits: newKeyMiddleOrder1Bits,
+    supplyGroupCodeHighOrder: supplyGroupCodeHighOrder,
+    stagedAt: stagedAt,
+  );
+
   Map<String, dynamic> toJson() => {
     if (newKeyHighOrderBits != null)
       'new_key_high_order_bits': newKeyHighOrderBits,
@@ -886,6 +1081,14 @@ class PendingKctSection {
     if (keyExpiryNumberLowOrder != null)
       'key_expiry_number_low_order': keyExpiryNumberLowOrder,
     if (newTariffIndex != null) 'new_tariff_index': newTariffIndex,
+    if (newKeyMiddleOrder2Bits != null)
+      'new_key_middle_order_2_bits': newKeyMiddleOrder2Bits,
+    if (supplyGroupCodeLowOrder != null)
+      'supply_group_code_low_order': supplyGroupCodeLowOrder,
+    if (newKeyMiddleOrder1Bits != null)
+      'new_key_middle_order_1_bits': newKeyMiddleOrder1Bits,
+    if (supplyGroupCodeHighOrder != null)
+      'supply_group_code_high_order': supplyGroupCodeHighOrder,
     'staged_at': stagedAt.toUtc().toIso8601String(),
   };
 
@@ -907,6 +1110,14 @@ class PendingKctSection {
             ? (j['key_expiry_number_low_order'] as num).toInt()
             : null,
         newTariffIndex: j['new_tariff_index'] as String?,
+        newKeyMiddleOrder2Bits: j['new_key_middle_order_2_bits'] as String?,
+        supplyGroupCodeLowOrder: j['supply_group_code_low_order'] is num
+            ? (j['supply_group_code_low_order'] as num).toInt()
+            : null,
+        newKeyMiddleOrder1Bits: j['new_key_middle_order_1_bits'] as String?,
+        supplyGroupCodeHighOrder: j['supply_group_code_high_order'] is num
+            ? (j['supply_group_code_high_order'] as num).toInt()
+            : null,
         stagedAt: DateTime.parse(j['staged_at'] as String),
       );
 }

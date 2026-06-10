@@ -141,7 +141,7 @@ void main() {
         // The on-disk JSON is human-inspectable and well-formed.
         final raw = await File(path).readAsString();
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
-        expect(decoded['schema'], 'nectar_sts_dart.virtual_meter/v2');
+        expect(decoded['schema'], 'nectar_sts_dart.virtual_meter/v3');
         expect(decoded['balance_kwh'], closeTo(9.0, 1e-9));
       } finally {
         await dir.delete(recursive: true);
@@ -163,6 +163,212 @@ void main() {
       } finally {
         await dir.delete(recursive: true);
       }
+    });
+  });
+
+  group('VirtualMeter MISTY1 4-section KCT', () {
+    const identity = MeterIdentity(
+      issuerIdentificationNumber: '600727',
+      individualAccountIdentificationNumber: '12345678901',
+      keyType: 2,
+      supplyGroupCode: '123456',
+      tariffIndex: '07',
+      keyRevisionNumber: 1,
+      decoderKeyGenerationAlgorithm: '04',
+      baseDate: '1993',
+    );
+
+    VirtualMeter setupMisty1() => VirtualMeter.setup(
+      identity: identity,
+      vendingKeyBytes: parseHexKey('0123456789ABCDEF0123456789ABCDEF01234567'),
+      encryptionAlgorithm: 'misty1',
+    );
+
+    VirtualHsm misty1Hsm() => VirtualHsm(
+      VendingCommonDesKey(
+        parseHexKey('0123456789ABCDEF0123456789ABCDEF01234567'),
+      ),
+    );
+
+    Map<String, dynamic> baseParams() => {
+      VirtualHsmParams.decoderKeyGenerationAlgorithm: '04',
+      VirtualHsmParams.encryptionAlgorithm: 'misty1',
+      VirtualHsmParams.keyType: 2,
+      VirtualHsmParams.supplyGroupCode: '123456',
+      VirtualHsmParams.tariffIndex: '07',
+      VirtualHsmParams.keyRevisionNo: 1,
+      VirtualHsmParams.issuerIdentificationNo: '600727',
+      VirtualHsmParams.decoderReferenceNumber: '12345678901',
+      VirtualHsmParams.baseDate: '1993',
+    };
+
+    test('rotates only after all 4 sections, in any order', () {
+      final meter = setupMisty1();
+      final hsm = misty1Hsm();
+
+      // New key + new SGC the rotation should converge to.
+      const newKeyHex = '00112233445566778899AABBCCDDEEFF';
+      const newSgc = '654321';
+
+      String kct(String sub, Map<String, dynamic> extra) {
+        final p = {
+          ...baseParams(),
+          VirtualHsmParams.tokenClass: '2',
+          VirtualHsmParams.tokenSubclass: sub,
+          VirtualHsmParams.newDecoderKey: newKeyHex,
+          VirtualHsmParams.newSupplyGroupCode: newSgc,
+          ...extra,
+        };
+        return hsm.generateToken('kct-$sub', p).tokenNo;
+      }
+
+      final t1 = kct('3', {
+        VirtualHsmParams.keyExpiryNumberHighOrder: 0xA,
+        VirtualHsmParams.newKeyRevisionNumber: 2,
+        VirtualHsmParams.newKeyType: 2,
+        VirtualHsmParams.rollOverKeyChange: 0,
+      });
+      final t2 = kct('4', {
+        VirtualHsmParams.keyExpiryNumberLowOrder: 0x5,
+        VirtualHsmParams.newTariffIndex: '08',
+      });
+      final t3 = kct('8', const {});
+      final t4 = kct('9', const {});
+
+      // Apply 3rd, then 1st, then 4th — still no rotation yet.
+      expect(meter.applyToken(t3), isA<ApplyKeyChange3rdStaged>());
+      expect(meter.applyToken(t1), isA<ApplyKeyChange1stStaged>());
+      expect(meter.applyToken(t4), isA<ApplyKeyChange4thStaged>());
+      // 2nd arrives last -> rotation fires.
+      final rotated = meter.applyToken(t2);
+      expect(rotated, isA<ApplyKeyRotated>());
+      final r = rotated as ApplyKeyRotated;
+      expect(r.newKeyRevisionNumber, 2);
+      expect(r.keyExpiryNumber, (0xA << 4) | 0x5);
+      expect(r.newTariffIndex, '08');
+      expect(r.newSupplyGroupCode, newSgc);
+
+      // Decoder key + identity actually rotated.
+      final actualHex = meter.decoderKeyBytes
+          .map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
+          .join();
+      expect(actualHex, newKeyHex);
+      expect(meter.identity.supplyGroupCode, newSgc);
+      expect(meter.identity.tariffIndex, '08');
+      expect(meter.identity.keyRevisionNumber, 2);
+      // All staging slots cleared.
+      expect(meter.pending1stSection, isNull);
+      expect(meter.pending2ndSection, isNull);
+      expect(meter.pending3rdSection, isNull);
+      expect(meter.pending4thSection, isNull);
+    });
+
+    test('partial sections persist across save/load', () async {
+      final dir = await Directory.systemTemp.createTemp('vmeter-misty1');
+      try {
+        final path = '${dir.path}\\m.json';
+        final meter = setupMisty1()..filePath = path;
+        final hsm = misty1Hsm();
+
+        final t3 = hsm.generateToken('kct-3', {
+          ...baseParams(),
+          VirtualHsmParams.tokenClass: '2',
+          VirtualHsmParams.tokenSubclass: '8',
+          VirtualHsmParams.newDecoderKey: '00112233445566778899AABBCCDDEEFF',
+          VirtualHsmParams.newSupplyGroupCode: '654321',
+        }).tokenNo;
+        expect(meter.applyToken(t3), isA<ApplyKeyChange3rdStaged>());
+        meter.save();
+
+        final reloaded = VirtualMeter.load(path);
+        expect(reloaded.pending3rdSection, isNotNull);
+        // Decimal SGC 654321 splits into SGCHO=159, SGCLO=3057.
+        expect(reloaded.pending3rdSection!.supplyGroupCodeLowOrder, 3057);
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    });
+  });
+
+  group('VirtualMeter register tokens', () {
+    test('ClearTamperCondition clears a latched tamper flag', () {
+      final meter = _meter()..tripTamper();
+      expect(meter.tamperLatched, isTrue);
+
+      final hsm = _hsm();
+      final tok = hsm.generateToken('clear-tamper', {
+        VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+        VirtualHsmParams.encryptionAlgorithm: 'sta',
+        VirtualHsmParams.keyType: 2,
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '07',
+        VirtualHsmParams.keyRevisionNo: 1,
+        VirtualHsmParams.issuerIdentificationNo: '600727',
+        VirtualHsmParams.decoderReferenceNumber: '12345678901',
+        VirtualHsmParams.tokenClass: '2',
+        VirtualHsmParams.tokenSubclass: '5',
+        VirtualHsmParams.tokenId: DateTime.utc(
+          2024,
+          7,
+          1,
+          9,
+          0,
+        ).toIso8601String(),
+        VirtualHsmParams.baseDate: '1993',
+      }).tokenNo;
+
+      expect(meter.applyToken(tok), isA<ApplyTamperConditionCleared>());
+      expect(meter.tamperLatched, isFalse);
+      expect(meter.tamperConditionClearedAt, isNotNull);
+    });
+
+    test('tamper-latched flag survives save/load', () async {
+      final dir = await Directory.systemTemp.createTemp('vmeter-tamper');
+      try {
+        final path = '${dir.path}\\m.json';
+        final meter = _meter()
+          ..filePath = path
+          ..tripTamper()
+          ..save();
+        final reloaded = VirtualMeter.load(path);
+        expect(reloaded.tamperLatched, isTrue);
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    });
+
+    test('ClearCredit zeroes the balance', () {
+      final meter = _meter(balance: 42.0);
+      final hsm = _hsm();
+      final tok = hsm.generateToken('clear-credit', {
+        VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+        VirtualHsmParams.encryptionAlgorithm: 'sta',
+        VirtualHsmParams.keyType: 2,
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '07',
+        VirtualHsmParams.keyRevisionNo: 1,
+        VirtualHsmParams.issuerIdentificationNo: '600727',
+        VirtualHsmParams.decoderReferenceNumber: '12345678901',
+        VirtualHsmParams.tokenClass: '2',
+        VirtualHsmParams.tokenSubclass: '1',
+        VirtualHsmParams.register: 1,
+        VirtualHsmParams.tokenId: DateTime.utc(
+          2024,
+          7,
+          2,
+          10,
+          0,
+        ).toIso8601String(),
+        VirtualHsmParams.baseDate: '1993',
+      }).tokenNo;
+
+      final res = meter.applyToken(tok);
+      expect(res, isA<ApplyCreditCleared>());
+      expect(
+        (res as ApplyCreditCleared).previousBalanceKwh,
+        closeTo(42.0, 1e-9),
+      );
+      expect(meter.balanceKwh, 0.0);
     });
   });
 }

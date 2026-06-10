@@ -21,17 +21,13 @@
 ///     (64-bit STA decoder-key rotation pair)
 ///   - Class 2 / SubClass 5 — `ClearTamperConditionToken`
 ///   - Class 2 / SubClass 6 — `SetMaximumPhasePowerUnbalanceLimitToken`
+///   - Class 2 / SubClass 8 + 9 — `Set3rdSection` / `Set4thSectionDecoderKeyToken`
+///     (128-bit MISTY1 decoder-key rotation, completes the 4-section set)
 ///
 /// Rejected with [NotImplementedException]:
 ///   - DKGA-01, DKGA-03 (not ported)
 ///   - Class 0 SubClass 1 (water), Class 0 SubClass 2 (gas) (not ported)
 ///   - Class 2 / SubClass 7 (`SetWaterMeterFactor`) — water out of scope
-///   - Class 2 / SubClass 8 + 9 — `Set3rdSection` / `Set4thSectionDecoderKeyToken`
-///     (128-bit MISTY1 decoder-key rotation). The token classes,
-///     generators and decoder are implemented and exported — see
-///     `Set3rdSectionDecoderKeyTokenGenerator` /
-///     `Set4thSectionDecoderKeyTokenGenerator` — but the param-map
-///     dispatch is not wired yet (pending 4-section meter rotation).
 ///   - `type: "prism-thrift"` — use [PrismHsm] instead.
 library;
 
@@ -98,6 +94,7 @@ class VirtualHsmParams {
   // Class 2 key-change tokens (params match the upstream Java
   // `Set*SectionDecoderKeyToken.getParams()` keys exactly).
   static const newDecoderKey = 'new_decoder_key';
+  static const newSupplyGroupCode = 'new_supply_group_code';
   static const keyExpiryNumberHighOrder = 'key_expiry_number_high_order';
   static const keyExpiryNumberLowOrder = 'key_expiry_number_low_order';
   static const newKeyRevisionNumber = 'new_key_revision_number';
@@ -186,10 +183,18 @@ extension VirtualHsmDispatch on VirtualHsm {
           'water meters are out of scope',
         );
       case '2,8':
+        return _generateClass2KeyChange3rdSection(
+          requestID,
+          params,
+          decoderKey,
+          ea,
+        );
       case '2,9':
-        throw NotImplementedException(
-          'Class 2 SubClass $sub (3rd/4th section decoder-key transfer) '
-          'requires MISTY1 / EA11, which is not ported',
+        return _generateClass2KeyChange4thSection(
+          requestID,
+          params,
+          decoderKey,
+          ea,
         );
       default:
         throw InvalidTokenException('Unknown class/subclass: $klass/$sub');
@@ -419,6 +424,44 @@ extension VirtualHsmDispatch on VirtualHsm {
       ),
       tariffIndex: TariffIndex(
         _required(params, VirtualHsmParams.newTariffIndex).toString(),
+      ),
+      newDecoderKey: newKey,
+    ).generateNew(requestID);
+  }
+
+  Set3rdSectionDecoderKeyToken _generateClass2KeyChange3rdSection(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final newKey = DecoderKey(
+      parseHexKey(_required(params, VirtualHsmParams.newDecoderKey).toString()),
+    );
+    return Set3rdSectionDecoderKeyTokenGenerator(
+      decoderKey: decoderKey,
+      encryptionAlgorithm: ea,
+      supplyGroupCode: SupplyGroupCode(
+        _required(params, VirtualHsmParams.newSupplyGroupCode).toString(),
+      ),
+      newDecoderKey: newKey,
+    ).generateNew(requestID);
+  }
+
+  Set4thSectionDecoderKeyToken _generateClass2KeyChange4thSection(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final newKey = DecoderKey(
+      parseHexKey(_required(params, VirtualHsmParams.newDecoderKey).toString()),
+    );
+    return Set4thSectionDecoderKeyTokenGenerator(
+      decoderKey: decoderKey,
+      encryptionAlgorithm: ea,
+      supplyGroupCode: SupplyGroupCode(
+        _required(params, VirtualHsmParams.newSupplyGroupCode).toString(),
       ),
       newDecoderKey: newKey,
     ).generateNew(requestID);
