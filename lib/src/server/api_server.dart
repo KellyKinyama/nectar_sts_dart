@@ -81,6 +81,27 @@
 /// else). The envelope's `status.code` mirrors the HTTP status so a
 /// caller can read either.
 ///
+/// ## Caller-supplied request IDs (idempotency)
+///
+/// Issue endpoints (POST `/v1/tokens`, `/v1/tokens/key-change`,
+/// `/v1/tokens/mse/*`, `/v1/tokens/meter-test`,
+/// `/v1/tokens/credit/*-currency`) accept an optional caller-supplied
+/// request id via either:
+///   - the `X-Request-Id` HTTP header (preferred), or
+///   - a `request_id` field on the JSON body.
+///
+/// When supplied, it is forwarded to Prism as the Thrift `messageId`
+/// and echoed back in the envelope's `request_id`. If the original
+/// reply is lost (timeout / dropped connection), the caller can then
+/// re-fetch the issued tokens via
+/// `GET /v1/tokens/results/{request_id}` without risk of double
+/// issuance. If omitted, the server generates one — but it is then
+/// only visible in the (possibly lost) reply, so callers that care
+/// about replay safety should always supply their own.
+///
+/// The value must match `^[A-Za-z0-9._-]{1,128}$`. The header takes
+/// precedence over the body field when both are present.
+///
 /// Auth: if the `NECTAR_API_TOKEN` env var is set when the handler is
 /// built (see `buildApiHandler`), every `/v1/*` request must carry a
 /// matching `Authorization: Bearer <token>` header. If the env var is
@@ -112,20 +133,53 @@ Map<String, dynamic> _envelope({
   required String message,
   required String requestId,
   Object? data,
-}) => {
-  'status': {'code': code, 'message': message},
-  'request_id': requestId,
-  if (data != null) 'data': data,
-};
+}) =>
+    {
+      'status': {'code': code, 'message': message},
+      'request_id': requestId,
+      if (data != null) 'data': data,
+    };
 
 Response _json(int status, Map<String, dynamic> body) => Response(
-  status,
-  body: jsonEncode(body),
-  headers: {'content-type': 'application/json; charset=utf-8'},
-);
+      status,
+      body: jsonEncode(body),
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
 
 String _newRequestId() =>
     'req-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+
+final _requestIdPattern = RegExp(r'^[A-Za-z0-9._-]{1,128}$');
+
+/// Resolve the request id for an issue request, preferring (in order)
+/// the `X-Request-Id` header, then `body['request_id']`, then a
+/// server-generated value. A caller-supplied value must match
+/// [_requestIdPattern]; otherwise a 400 is raised. The body field is
+/// removed (not just read) so it doesn't leak through to issuer code
+/// as a meter-config param.
+String _resolveRequestId(Request request, Map<String, dynamic>? body) {
+  final fromHeader = request.headers['x-request-id'];
+  if (fromHeader != null && fromHeader.isNotEmpty) {
+    if (!_requestIdPattern.hasMatch(fromHeader)) {
+      throw _BadRequest(
+        'X-Request-Id "$fromHeader" must match ${_requestIdPattern.pattern}',
+      );
+    }
+    return fromHeader;
+  }
+  if (body != null) {
+    final fromBody = body.remove('request_id');
+    if (fromBody is String && fromBody.isNotEmpty) {
+      if (!_requestIdPattern.hasMatch(fromBody)) {
+        throw _BadRequest(
+          'request_id "$fromBody" must match ${_requestIdPattern.pattern}',
+        );
+      }
+      return fromBody;
+    }
+  }
+  return _newRequestId();
+}
 
 /// Build a `shelf` `Handler` bound to [issuer]. Pass [bearerToken]
 /// (or set `NECTAR_API_TOKEN`) to require
@@ -253,9 +307,9 @@ Future<Response> _generateHandler(
   MeterStore? registry,
   TariffBook? tariffs,
 ) async {
-  final requestId = _newRequestId();
   final rawBody = await _readJsonBody(request);
   _rejectSensitiveParams(rawBody);
+  final requestId = _resolveRequestId(request, rawBody);
   final resolved = await _resolveMeterSerial(rawBody, registry);
   final params = resolved.params;
   final pricing = _resolvePricing(params, tariffs);
@@ -282,8 +336,7 @@ Future<Response> _generateHandler(
         409,
         _envelope(
           code: 409,
-          message:
-              'TID collision: a token with tid_minutes=$tid was already '
+          message: 'TID collision: a token with tid_minutes=$tid was already '
               'issued for this meter$priorMsg. Use a fresh token_id.',
           requestId: requestId,
         ),
@@ -338,9 +391,9 @@ Future<Response> _decodeHandler(
 }
 
 Future<Response> _keyChangeHandler(Request request, TokenIssuer issuer) async {
-  final requestId = _newRequestId();
   final body = await _readJsonBody(request);
   _rejectSensitiveParams(body);
+  final requestId = _resolveRequestId(request, body);
   final tokens = await issuer.issueKeyChangeTokens(requestId, body);
   return _json(
     200,
@@ -374,9 +427,9 @@ Future<Response> _mseHandler(
   TokenIssuer issuer,
   _MseOp op,
 ) async {
-  final requestId = _newRequestId();
   final body = await _readJsonBody(request);
   _rejectSensitiveParams(body);
+  final requestId = _resolveRequestId(request, body);
   final transferAmount = _resolveMseTransferAmount(op, body);
   final tokens = await issuer.issueMseToken(
     requestId,
@@ -448,9 +501,9 @@ double _encodeSetFlagPayload(int flagType, int flagValue) {
 }
 
 Future<Response> _meterTestHandler(Request request, TokenIssuer issuer) async {
-  final requestId = _newRequestId();
   final body = await _readJsonBody(request);
   _rejectSensitiveParams(body);
+  final requestId = _resolveRequestId(request, body);
   final subclass = _requireBodyInt(body, 'subclass');
   final control = _requireBodyInt(body, 'control');
   final manufacturerCode = _requireBodyInt(body, 'manufacturer_code');
@@ -477,9 +530,9 @@ Future<Response> _currencyCreditHandler(
   int subclass,
   String resourceLabel,
 ) async {
-  final requestId = _newRequestId();
   final body = await _readJsonBody(request);
   _rejectSensitiveParams(body);
+  final requestId = _resolveRequestId(request, body);
   final tokens = await issuer.issueCurrencyCreditToken(
     requestId,
     subclass,
@@ -612,13 +665,13 @@ Future<Response> _lookupHandler(
 // ---- meter registry endpoints ----------------------------------
 
 Response _registryDisabled(String requestId) => _json(
-  503,
-  _envelope(
-    code: 503,
-    message: 'Meter registry is not enabled on this server',
-    requestId: requestId,
-  ),
-);
+      503,
+      _envelope(
+        code: 503,
+        message: 'Meter registry is not enabled on this server',
+        requestId: requestId,
+      ),
+    );
 
 Future<Response> _registerMeterHandler(
   Request request,
@@ -656,10 +709,10 @@ Future<Response> _registerMeterHandler(
   final MeterIdentity identity;
   try {
     identity = MeterIdentity.fromJson({
-      'issuer_identification_no': identityJson['issuer_identification_no']
-          ?.toString(),
-      'decoder_reference_number': identityJson['decoder_reference_number']
-          ?.toString(),
+      'issuer_identification_no':
+          identityJson['issuer_identification_no']?.toString(),
+      'decoder_reference_number':
+          identityJson['decoder_reference_number']?.toString(),
       'key_type': identityJson['key_type'],
       'supply_group_code': identityJson['supply_group_code']?.toString(),
       'tariff_index': identityJson['tariff_index']?.toString(),
@@ -676,9 +729,8 @@ Future<Response> _registerMeterHandler(
   final meter = RegisteredMeter(
     serial: serial,
     identity: identity,
-    encryptionAlgorithm: (body['encryption_algorithm'] ?? 'sta')
-        .toString()
-        .toLowerCase(),
+    encryptionAlgorithm:
+        (body['encryption_algorithm'] ?? 'sta').toString().toLowerCase(),
     subscriberLabel: body['subscriber_label']?.toString(),
     registeredAt: DateTime.now().toUtc(),
   );
@@ -698,8 +750,7 @@ Future<Response> _registerMeterHandler(
       412,
       _envelope(
         code: 412,
-        message:
-            'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
+        message: 'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
             'Create it in the Laravel dashboard before registering this '
             'meter.',
         requestId: requestId,
@@ -1098,8 +1149,8 @@ Map<String, dynamic> _tokenToJson(Token token) {
     }
     if (token.tokenIdentifier != null) {
       base['token_id_minutes'] = token.tokenIdentifier!.bitString.value;
-      base['token_id_time'] = token.tokenIdentifier!.timeOfIssue
-          .toIso8601String();
+      base['token_id_time'] =
+          token.tokenIdentifier!.timeOfIssue.toIso8601String();
     }
     if (token.randomNo != null) {
       base['random_no'] = token.randomNo!.bitString.value;

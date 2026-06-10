@@ -870,4 +870,63 @@ void main() {
       );
     });
   });
+
+  group('caller-supplied request id', () {
+    test('X-Request-Id header is echoed back in envelope', () async {
+      final handler = buildApiHandler(_hsm());
+      final r = await _post(
+        handler,
+        '/v1/tokens',
+        _baseParams(),
+        headers: {'X-Request-Id': 'caller-abc-123'},
+      );
+      expect(r['status'], 200, reason: '${r['body']}');
+      expect((r['body'] as Map)['request_id'], 'caller-abc-123');
+    });
+
+    test('body.request_id is honored when no header is set', () async {
+      final handler = buildApiHandler(_hsm());
+      final body = _baseParams()..['request_id'] = 'caller-body-xyz';
+      final r = await _post(handler, '/v1/tokens', body);
+      expect(r['status'], 200, reason: '${r['body']}');
+      expect((r['body'] as Map)['request_id'], 'caller-body-xyz');
+    });
+
+    test('header takes precedence over body.request_id', () async {
+      final handler = buildApiHandler(_hsm());
+      final body = _baseParams()..['request_id'] = 'body-loses';
+      final r = await _post(
+        handler,
+        '/v1/tokens',
+        body,
+        headers: {'X-Request-Id': 'header-wins'},
+      );
+      expect(r['status'], 200, reason: '${r['body']}');
+      expect((r['body'] as Map)['request_id'], 'header-wins');
+    });
+
+    test('invalid X-Request-Id (illegal char) -> 400', () async {
+      final handler = buildApiHandler(_hsm());
+      final r = await _post(
+        handler,
+        '/v1/tokens',
+        _baseParams(),
+        headers: {'X-Request-Id': 'has spaces'},
+      );
+      expect(r['status'], 400);
+      expect(
+        ((r['body'] as Map)['status'] as Map)['message'].toString(),
+        contains('X-Request-Id'),
+      );
+    });
+
+    test('omitted request id -> server-generated value is returned', () async {
+      final handler = buildApiHandler(_hsm());
+      final r = await _post(handler, '/v1/tokens', _baseParams());
+      expect(r['status'], 200);
+      final id = (r['body'] as Map)['request_id'] as String;
+      expect(id, startsWith('req-'));
+      expect(id.length, greaterThan(4));
+    });
+  });
 }
