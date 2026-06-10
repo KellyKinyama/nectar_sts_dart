@@ -809,35 +809,29 @@ void main() {
   // bits and emitted in the clear. We still pass a derived key and EA
   // to satisfy the constructor signature — they are no-ops for Class 1.
   group('STS_531_1_0_02 CTSA02 (Class 1 InitiateMeterTestOrDisplay)', () {
-    test(
-      'step1: PAN=600727000000000009, mfg=0x00 (8-bit), control=36×1 '
-      '→ 56493153725450313471',
-      () {
-        final dk = defaultDecoderKey();
-        final mfg = ManufacturerCode.fromInt(0, widthBits: 8);
-        final ctrl = Control(BitString.fromBinary('1' * 36), mfg);
-        final token = InitiateMeterTestOrDisplay1Token('request_id')
-          ..manufacturerCode = mfg
-          ..control = ctrl;
-        InitiateMeterTestOrDisplay1TokenGenerator(dk, ea07).generate(token);
-        expect(token.tokenNo, equals('56493153725450313471'));
-      },
-    );
-    test(
-      'step2: PAN=000001000000000082, mfg=ManufacturerCode("0000") '
-      '(16-bit 0x0000), control=28×1 → 02305843005052951967',
-      () {
-        // DK / EA are unused by Class 1 (the data block is emitted in
-        // the clear). Reuse `defaultDecoderKey()` to satisfy the ctor.
-        final dk = defaultDecoderKey();
-        final mfg = ManufacturerCode.fromInt(0, widthBits: 16);
-        final ctrl = Control(BitString.fromBinary('1' * 28), mfg);
-        final token = InitiateMeterTestOrDisplay2Token('request_id')
-          ..manufacturerCode = mfg
-          ..control = ctrl;
-        InitiateMeterTestOrDisplay2TokenGenerator(dk, ea07).generate(token);
-        expect(token.tokenNo, equals('02305843005052951967'));
-      },
-    );
+    test('step1: PAN=600727000000000009, mfg=0x00 (8-bit), control=36×1 '
+        '→ 56493153725450313471', () {
+      final dk = defaultDecoderKey();
+      final mfg = ManufacturerCode.fromInt(0, widthBits: 8);
+      final ctrl = Control(BitString.fromBinary('1' * 36), mfg);
+      final token = InitiateMeterTestOrDisplay1Token('request_id')
+        ..manufacturerCode = mfg
+        ..control = ctrl;
+      InitiateMeterTestOrDisplay1TokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('56493153725450313471'));
+    });
+    test('step2: PAN=000001000000000082, mfg=ManufacturerCode("0000") '
+        '(16-bit 0x0000), control=28×1 → 02305843005052951967', () {
+      // DK / EA are unused by Class 1 (the data block is emitted in
+      // the clear). Reuse `defaultDecoderKey()` to satisfy the ctor.
+      final dk = defaultDecoderKey();
+      final mfg = ManufacturerCode.fromInt(0, widthBits: 16);
+      final ctrl = Control(BitString.fromBinary('1' * 28), mfg);
+      final token = InitiateMeterTestOrDisplay2Token('request_id')
+        ..manufacturerCode = mfg
+        ..control = ctrl;
+      InitiateMeterTestOrDisplay2TokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('02305843005052951967'));
+    });
   });
 }
