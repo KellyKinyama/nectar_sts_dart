@@ -10,11 +10,30 @@ VirtualHsm _hsm() => VirtualHsm(
 // DKGA-04 + STA needs a 160-bit (20-byte) vending key. Reuse the
 // CTSA24/25/26 test vector key for byte-identical compatibility.
 VirtualHsm _hsm04() => VirtualHsm(
-  VendingUniqueDesKey(Uint8List.fromList([
-    0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab,
-    0x94, 0x94, 0x94, 0x94, 0x94, 0x94, 0x94, 0x94,
-    0x01, 0x23, 0x45, 0x67,
-  ])),
+  VendingUniqueDesKey(
+    Uint8List.fromList([
+      0xab,
+      0xab,
+      0xab,
+      0xab,
+      0xab,
+      0xab,
+      0xab,
+      0xab,
+      0x94,
+      0x94,
+      0x94,
+      0x94,
+      0x94,
+      0x94,
+      0x94,
+      0x94,
+      0x01,
+      0x23,
+      0x45,
+      0x67,
+    ]),
+  ),
 );
 
 Map<String, dynamic> _dkga02Native() => {
@@ -251,11 +270,14 @@ void main() {
           VirtualHsmParams.amount: 1.0,
           VirtualHsmParams.tokenId: bd == '2035'
               ? '2035-06-01T09:00:00Z'
-              : (bd == '2014' ? '2014-06-01T09:00:00Z' : '2008-06-01T09:00:00Z'),
+              : (bd == '2014'
+                    ? '2014-06-01T09:00:00Z'
+                    : '2008-06-01T09:00:00Z'),
         };
         final t = hsm.generateToken('req-bd-$bd', params);
-        final d = hsm.decodeToken('req-bd-$bd.dec', t.tokenNo, params)
-            as TransferElectricityCreditToken;
+        final d =
+            hsm.decodeToken('req-bd-$bd.dec', t.tokenNo, params)
+                as TransferElectricityCreditToken;
         expect(d.amountPurchased!.unitsPurchased, closeTo(1.0, 1e-9));
       }
     });
@@ -284,8 +306,9 @@ void main() {
       };
       final generated = hsm.generateToken('mpl', params);
       expect(generated, isA<SetMaximumPowerLimitToken>());
-      final decoded = hsm.decodeToken('mpl.dec', generated.tokenNo, params)
-          as SetMaximumPowerLimitToken;
+      final decoded =
+          hsm.decodeToken('mpl.dec', generated.tokenNo, params)
+              as SetMaximumPowerLimitToken;
       expect(decoded.maximumPowerLimit!.value, 16384);
     });
 
@@ -299,8 +322,9 @@ void main() {
       };
       final generated = hsm.generateToken('cc', params);
       expect(generated, isA<ClearCreditToken>());
-      final decoded = hsm.decodeToken('cc.dec', generated.tokenNo, params)
-          as ClearCreditToken;
+      final decoded =
+          hsm.decodeToken('cc.dec', generated.tokenNo, params)
+              as ClearCreditToken;
       expect(decoded.register!.bitString.value, 0xFFFF);
     });
 
@@ -314,8 +338,9 @@ void main() {
       };
       final generated = hsm.generateToken('tr', params);
       expect(generated, isA<SetTariffRateToken>());
-      final decoded = hsm.decodeToken('tr.dec', generated.tokenNo, params)
-          as SetTariffRateToken;
+      final decoded =
+          hsm.decodeToken('tr.dec', generated.tokenNo, params)
+              as SetTariffRateToken;
       expect(decoded.rate!.value, 12345);
     });
 
@@ -329,8 +354,9 @@ void main() {
       };
       final generated = hsm.generateToken('ctc', params);
       expect(generated, isA<ClearTamperConditionToken>());
-      final decoded = hsm.decodeToken('ctc.dec', generated.tokenNo, params)
-          as ClearTamperConditionToken;
+      final decoded =
+          hsm.decodeToken('ctc.dec', generated.tokenNo, params)
+              as ClearTamperConditionToken;
       expect(decoded.pad!.bitString.value, 0x1234);
     });
 
@@ -349,8 +375,9 @@ void main() {
       };
       final generated = hsm.generateToken('mppul', params);
       expect(generated, isA<SetMaximumPhasePowerUnbalanceLimitToken>());
-      final decoded = hsm.decodeToken('mppul.dec', generated.tokenNo, params)
-          as SetMaximumPhasePowerUnbalanceLimitToken;
+      final decoded =
+          hsm.decodeToken('mppul.dec', generated.tokenNo, params)
+              as SetMaximumPhasePowerUnbalanceLimitToken;
       expect(
         decoded.maximumPhasePowerUnbalanceLimit!.bitString.value,
         equals(mppul.bitString.value),
@@ -443,12 +470,15 @@ void main() {
     test('missing required param raises InvalidTokenException', () {
       final hsm = _hsm();
       expect(
-        () => hsm.generateToken('miss', {
-          ...dkga02Native(),
-          VirtualHsmParams.tokenClass: '0',
-          VirtualHsmParams.tokenSubclass: '0',
-          // intentionally omit amount + tokenId
-        }..remove(VirtualHsmParams.tokenId)),
+        () => hsm.generateToken(
+          'miss',
+          {
+            ...dkga02Native(),
+            VirtualHsmParams.tokenClass: '0',
+            VirtualHsmParams.tokenSubclass: '0',
+            // intentionally omit amount + tokenId
+          }..remove(VirtualHsmParams.tokenId),
+        ),
         throwsA(isA<InvalidTokenException>()),
       );
     });
@@ -464,8 +494,9 @@ void main() {
         VirtualHsmParams.tokenId: issuedAt.toIso8601String(),
       };
       final t = hsm.generateToken('tid', params);
-      final d = hsm.decodeToken('tid.dec', t.tokenNo, params)
-          as TransferElectricityCreditToken;
+      final d =
+          hsm.decodeToken('tid.dec', t.tokenNo, params)
+              as TransferElectricityCreditToken;
       // STS encodes minute precision; seconds get truncated.
       expect(d.tokenIdentifier!.timeOfIssue.year, 2024);
       expect(d.tokenIdentifier!.timeOfIssue.month, 6);

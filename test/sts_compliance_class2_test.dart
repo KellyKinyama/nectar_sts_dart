@@ -1018,9 +1018,7 @@ void main() {
       final kenho = KeyExpiryNumberHighOrder(
         BitString.fromValue((ken >> 4) & 0xF, 4),
       );
-      final kenlo = KeyExpiryNumberLowOrder(
-        BitString.fromValue(ken & 0xF, 4),
-      );
+      final kenlo = KeyExpiryNumberLowOrder(BitString.fromValue(ken & 0xF, 4));
       final tok1 = Set1stSectionDecoderKeyTokenGenerator(
         decoderKey: dk,
         encryptionAlgorithm: ea07,
@@ -1042,27 +1040,25 @@ void main() {
         ..tokenIdentifier = _tid(issuedAt)
         ..randomNo = _rnd5;
       TransferElectricityCreditTokenGenerator(dk, ea07).generate(tec);
-      return {
-        'set1': tok1.tokenNo,
-        'set2': tok2.tokenNo,
-        'tec': tec.tokenNo,
-      };
+      return {'set1': tok1.tokenNo, 'set2': tok2.tokenNo, 'tec': tec.tokenNo};
     }
 
-    test('step1: KRN=1, TI=02, KEN=85, default SGC/vudk, 01/04/2002 10:05:00',
-        () {
-      final r = genStep(
-        issuedAt: DateTime.utc(2002, 4, 1, 10, 5, 0),
-        krn: KeyRevisionNumber(1),
-        ti: TariffIndex('02'),
-        ken: 85,
-        sgcArg: sgcDefault,
-        vudkArg: vudkDefault,
-      );
-      expect(r['set1'], equals('31337250623187821174'));
-      expect(r['set2'], equals('25365690080149305690'));
-      expect(r['tec'], equals('40823728429161791369'));
-    });
+    test(
+      'step1: KRN=1, TI=02, KEN=85, default SGC/vudk, 01/04/2002 10:05:00',
+      () {
+        final r = genStep(
+          issuedAt: DateTime.utc(2002, 4, 1, 10, 5, 0),
+          krn: KeyRevisionNumber(1),
+          ti: TariffIndex('02'),
+          ken: 85,
+          sgcArg: sgcDefault,
+          vudkArg: vudkDefault,
+        );
+        expect(r['set1'], equals('31337250623187821174'));
+        expect(r['set2'], equals('25365690080149305690'));
+        expect(r['tec'], equals('40823728429161791369'));
+      },
+    );
 
     // Java upstream JUnit `@Before` resets `tariffIndex` to "01"
     // before EACH @Test, so step2 / step3 inherit TI=01 even though
@@ -1124,27 +1120,29 @@ void main() {
       validate: MeterPanValidation.skip,
     );
 
-    test('step1: 26/05/2008 08:00:00, register=0xFFFF → 08144275084202187413',
-        () {
-      final dk = DecoderKeyGeneratorAlgorithm04(
-        baseDate: BaseDate.date1993,
-        tariffIndex: ti,
-        supplyGroupCode: sgc04,
-        keyType: keyType,
-        keyRevisionNumber: KeyRevisionNumber(1),
-        encryptionAlgorithm: ea07,
-        meterPan: pan,
-        vendingKey: vudk04,
-      ).generate();
-      final token = ClearCreditTokenGenerator(dk, ea07).buildToken(
-        'request_id',
-        randomNo: _rnd5,
-        tokenIdentifier: _tid(DateTime.utc(2008, 5, 26, 8, 0, 0)),
-        register: Register(BitString.fromValue(0xFFFF, 16)),
-      );
-      ClearCreditTokenGenerator(dk, ea07).generate(token);
-      expect(token.tokenNo, equals('08144275084202187413'));
-    });
+    test(
+      'step1: 26/05/2008 08:00:00, register=0xFFFF → 08144275084202187413',
+      () {
+        final dk = DecoderKeyGeneratorAlgorithm04(
+          baseDate: BaseDate.date1993,
+          tariffIndex: ti,
+          supplyGroupCode: sgc04,
+          keyType: keyType,
+          keyRevisionNumber: KeyRevisionNumber(1),
+          encryptionAlgorithm: ea07,
+          meterPan: pan,
+          vendingKey: vudk04,
+        ).generate();
+        final token = ClearCreditTokenGenerator(dk, ea07).buildToken(
+          'request_id',
+          randomNo: _rnd5,
+          tokenIdentifier: _tid(DateTime.utc(2008, 5, 26, 8, 0, 0)),
+          register: Register(BitString.fromValue(0xFFFF, 16)),
+        );
+        ClearCreditTokenGenerator(dk, ea07).generate(token);
+        expect(token.tokenNo, equals('08144275084202187413'));
+      },
+    );
   });
 
   // CTSA26 — KCT pair via DKGA-04 + STA with a base-date rotation
@@ -1163,9 +1161,7 @@ void main() {
     final kenho = KeyExpiryNumberHighOrder(
       BitString.fromValue((ken >> 4) & 0xF, 4),
     );
-    final kenlo = KeyExpiryNumberLowOrder(
-      BitString.fromValue(ken & 0xF, 4),
-    );
+    final kenlo = KeyExpiryNumberLowOrder(BitString.fromValue(ken & 0xF, 4));
     final newRolloverKeyChange = RolloverKeyChange.fromBool(true);
 
     Map<String, String> genStep(MeterPrimaryAccountNumber pan) {
@@ -1230,4 +1226,132 @@ void main() {
       expect(r['set2'], equals('22434017728466234784'));
     });
   });
+
+  // CTSA21 (water credit) and CTSA22 (gas credit) are not portable:
+  // the Dart implementation only ships the Class 0 electricity-credit
+  // path. Water/gas TransferCreditToken generators are intentionally
+  // out of scope (the VirtualHsm dispatcher already rejects subclass
+  // 1 and 2 — see virtual_hsm_dispatch_test.dart). Documented here
+  // for parity-suite completeness.
+  group('STS_531_1_0_02 CTSA21/CTSA22 (water/gas Class 0)', () {
+    test('parity-skip: water/gas Class 0 not ported in Dart', () {
+      // No-op marker — the rejection path is asserted in
+      // virtual_hsm_dispatch_test.dart.
+      expect(true, isTrue);
+    }, skip: 'Class 0 subclass 1 (water) / 2 (gas) intentionally out of scope.');
+  });
+
+  // ===========================================================
+  // STS 531-1 v1.0.04 — DKGA-04 + MISTY1 (EA-11) coverage
+  // ===========================================================
+  //
+  // The 1.0.04 revision exercises the MISTY1 block cipher (EA-11)
+  // with DKGA-04 (HMAC-SHA-256 key derivation). The Dart port ships
+  // both primitives; below we mirror the most algorithmically
+  // distinctive vectors:
+  //
+  //   - 1.0.04 CTSA09 — ClearCredit (Class 2) via DKGA-04+MISTY1
+  //   - 1.0.04 CTSA12 — SetMaximumPowerLimit (Class 2) sweep
+  //                     across the MPL exponent/mantissa boundaries
+  //                     (256, 16383, 16384, 20000, 180223, 180224,
+  //                      1818623, 1818624, 18201624)
+  //
+  // Shared setup (matches both Java @Before blocks):
+  //   - vudk = hex 'abababababababab949494949494949401234567' (20 B)
+  //   - SGC = '123457', TI = '01', KRN = 1, KT = 2
+  //   - PAN = '600727000000000009' (skip validation)
+  //   - baseDate = 1993, randomNo = 0x5
+  //
+  final vudk04 = VendingUniqueDesKey(
+    _hex('abababababababab949494949494949401234567'),
+  );
+  final sgc04 = SupplyGroupCode('123457');
+  final pan04 = MeterPrimaryAccountNumber.fromString(
+    '600727000000000009',
+    validate: MeterPanValidation.skip,
+  );
+  final ea11 = Misty1EncryptionAlgorithm();
+
+  DecoderKey dkga04Misty1({KeyRevisionNumber? krn}) =>
+      DecoderKeyGeneratorAlgorithm04(
+        baseDate: BaseDate.date1993,
+        tariffIndex: ti,
+        supplyGroupCode: sgc04,
+        keyType: keyType,
+        keyRevisionNumber: krn ?? KeyRevisionNumber(1),
+        encryptionAlgorithm: ea11,
+        meterPan: pan04,
+        vendingKey: vudk04,
+      ).generate();
+
+  group('STS_531_1_0_04 CTSA09 (ClearCredit via DKGA-04 + MISTY1)', () {
+    // Each step rebuilds the decoder key the same way (matches the
+    // Java pattern of re-deriving inside every @Test).
+    final cases = <List<dynamic>>[
+      [DateTime.utc(2004, 3, 29, 0, 0, 0), '09791211239166238461'],
+      [DateTime.utc(2004, 3, 29, 0, 1, 0), '18070818655140104337'],
+      // CTSA09 step3 in Java is a multi-minute series that exercises
+      // the same generator at 00:03/00:04/00:05 with the TID rolled
+      // forward. Each minute is exercised here as an independent
+      // vector (the rolling TID counter is a vending-side concern,
+      // left to the caller in the Dart port).
+      [DateTime.utc(2004, 3, 29, 0, 3, 0), '59463760341829598722'],
+      [DateTime.utc(2004, 3, 29, 0, 4, 0), '49512072598296997272'],
+      [DateTime.utc(2004, 3, 29, 0, 5, 0), '59135803195278393273'],
+    ];
+
+    for (var i = 0; i < cases.length; i++) {
+      final issuedAt = cases[i][0] as DateTime;
+      final expected = cases[i][1] as String;
+      test('step${i + 1}: $issuedAt → $expected', () {
+        final dk = dkga04Misty1();
+        final token = ClearCreditTokenGenerator(dk, ea11).buildToken(
+          'request_id',
+          randomNo: _rnd5,
+          tokenIdentifier: _tid(issuedAt),
+          register: Register(BitString.fromValue(0xFFFF, 16)),
+        );
+        ClearCreditTokenGenerator(dk, ea11).generate(token);
+        expect(token.tokenNo, equals(expected));
+      });
+    }
+  });
+
+  group(
+    'STS_531_1_0_04 CTSA12 (SetMaximumPowerLimit via DKGA-04 + MISTY1)',
+    () {
+      // All 9 steps issued on 01/04/2004 at minute boundaries with
+      // increasing MPL values that span the STS exponent/mantissa
+      // representation boundaries.
+      final cases = <List<dynamic>>[
+        [DateTime.utc(2004, 4, 1, 7, 0, 0), 256, '58601433826945463485'],
+        [DateTime.utc(2004, 4, 1, 7, 5, 0), 16383, '13997395479415026219'],
+        [DateTime.utc(2004, 4, 1, 7, 10, 0), 16384, '18037738085263294820'],
+        [DateTime.utc(2004, 4, 1, 7, 15, 0), 20000, '06738975074638745925'],
+        [DateTime.utc(2004, 4, 1, 7, 20, 0), 180223, '66354091567942569601'],
+        [DateTime.utc(2004, 4, 1, 7, 25, 0), 180224, '62853351521017859877'],
+        [DateTime.utc(2004, 4, 1, 7, 30, 0), 1818623, '40984149905900332649'],
+        [DateTime.utc(2004, 4, 1, 7, 35, 0), 1818624, '26882838654580901052'],
+        [DateTime.utc(2004, 4, 1, 7, 40, 0), 18201624, '29255956459122361629'],
+      ];
+
+      for (var i = 0; i < cases.length; i++) {
+        final issuedAt = cases[i][0] as DateTime;
+        final mpl = cases[i][1] as int;
+        final expected = cases[i][2] as String;
+        test('step${i + 1}: MPL=$mpl @ $issuedAt → $expected', () {
+          final dk = dkga04Misty1();
+          final token = SetMaximumPowerLimitTokenGenerator(dk, ea11)
+              .buildToken(
+                'request_id',
+                randomNo: _rnd5,
+                tokenIdentifier: _tid(issuedAt),
+                maximumPowerLimit: MaximumPowerLimit(mpl),
+              );
+          SetMaximumPowerLimitTokenGenerator(dk, ea11).generate(token);
+          expect(token.tokenNo, equals(expected));
+        });
+      }
+    },
+  );
 }

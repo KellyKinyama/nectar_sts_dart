@@ -76,8 +76,7 @@ class IndividualAccountIdentificationNumber implements _Entity {
     }
     final combined = '$manufacturerCode$decoderSerialNumber';
     final check =
-        drnCheckDigit ??
-        LuhnAlgorithm.generateCheckDigit(int.parse(combined));
+        drnCheckDigit ?? LuhnAlgorithm.generateCheckDigit(int.parse(combined));
     if (check < 0 || check > 9) {
       throw InvalidDrnCheckDigitException(
         'DRN check digit must be 0..9: $check',
@@ -328,7 +327,9 @@ class MeterPrimaryAccountNumber implements _Entity {
           manufacturerCode: mfg,
           decoderSerialNumber: dsn,
         );
-        final computedDrn = int.parse(iain.value.substring(iain.value.length - 1));
+        final computedDrn = int.parse(
+          iain.value.substring(iain.value.length - 1),
+        );
         if (computedDrn != extractedDrnCheckDigit) {
           throw const InvalidIAINNumberException(
             'Invalid Individual Account Identification Number',

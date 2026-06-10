@@ -60,9 +60,7 @@ void main() {
       'CTSA17 step1: "1234567890411111111113" → InvalidIAINNumberException',
       () {
         expect(
-          () => MeterPrimaryAccountNumber.fromString(
-            '1234567890411111111113',
-          ),
+          () => MeterPrimaryAccountNumber.fromString('1234567890411111111113'),
           throwsA(
             isA<InvalidIAINNumberException>().having(
               (e) => e.message,
