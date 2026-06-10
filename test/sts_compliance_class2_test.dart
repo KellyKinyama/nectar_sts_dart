@@ -834,4 +834,400 @@ void main() {
       expect(token.tokenNo, equals('02305843005052951967'));
     });
   });
+
+  // CTSA10 — TransferElectricityCredit amount + date sweep using the
+  // standard CTSA setup (DKGA-02, defaultDecoderKey, EA07). KEN=255 on
+  // the Java side but Dart's Class 0 generator does not mix KEN into
+  // the data block (only Class 2 key-change tokens consume it), so the
+  // vectors are byte-identical to a defaultDecoderKey + amount-sweep.
+  // Water/gas steps in the Java suite are skipped per the Class 0
+  // SubClass 0 scope.
+  group('STS_531_1_0_02 CTSA10 (TransferElectricityCredit amount sweep)', () {
+    String genTec(DateTime issuedAt, double amount) {
+      final dk = defaultDecoderKey();
+      final token = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(amount)
+        ..tokenIdentifier = _tid(issuedAt)
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    test('step1: 01/04/2004 00:30:00, 25.6 → 26456622012185850752', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 0, 30, 0), 25.6),
+        equals('26456622012185850752'),
+      );
+    });
+    test('step2: 01/04/2004 00:35:00, 1638.3 → 02194538019157867319', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 0, 35, 0), 1638.3),
+        equals('02194538019157867319'),
+      );
+    });
+    test('step3: 01/04/2004 00:40:00, 1638.4 → 49848950875249585071', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 0, 40, 0), 1638.4),
+        equals('49848950875249585071'),
+      );
+    });
+    test('step4: 01/04/2004 00:45:00, 2000.0 → 71997443697501228179', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 0, 45, 0), 2000.0),
+        equals('71997443697501228179'),
+      );
+    });
+    test('step5: 01/04/2004 00:50:00, 18022.3 → 58589277912776864555', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 0, 50, 0), 18022.3),
+        equals('58589277912776864555'),
+      );
+    });
+    test('step6: 01/04/2004 00:55:00, 18022.4 → 16328229234437142451', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 0, 55, 0), 18022.4),
+        equals('16328229234437142451'),
+      );
+    });
+    test('step7: 01/04/2004 01:44:00, 181862.3 → 45001756646344378677', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 1, 44, 0), 181862.3),
+        equals('45001756646344378677'),
+      );
+    });
+    test('step8: 01/04/2004 01:49:00, 181862.4 → 15810488151857362998', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 1, 49, 0), 181862.4),
+        equals('15810488151857362998'),
+      );
+    });
+    test('step9: 01/04/2004 01:54:00, 1820162.4 → 42222423067848970276', () {
+      expect(
+        genTec(DateTime.utc(2004, 4, 1, 1, 54, 0), 1820162.4),
+        equals('42222423067848970276'),
+      );
+    });
+  });
+
+  // CTSA11 — Class 1 InitiateMeterTestOrDisplay control-bit sweep (16
+  // steps). Same pattern as CTSA02 but with non-zero control values
+  // walking the bit positions 0..10 then 13..17. mfg=0 (8-bit) for
+  // the 2-digit variant and mfg=0x0000 (16-bit) for the 4-digit
+  // variant; no DK/EA dependency (Class 1 emits the data block in the
+  // clear).
+  group('STS_531_1_0_02 CTSA11 (Class 1 control-bit sweep)', () {
+    final dk = defaultDecoderKey();
+    final mfg2 = ManufacturerCode.fromInt(0, widthBits: 8);
+    final mfg4 = ManufacturerCode.fromInt(0, widthBits: 16);
+
+    String gen1(int ctrl) {
+      final c = Control(BitString.fromValue(ctrl, 36), mfg2);
+      final token = InitiateMeterTestOrDisplay1Token('request_id')
+        ..manufacturerCode = mfg2
+        ..control = c;
+      InitiateMeterTestOrDisplay1TokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    String gen2(int ctrl) {
+      final c = Control(BitString.fromValue(ctrl, 28), mfg4);
+      final token = InitiateMeterTestOrDisplay2Token('request_id')
+        ..manufacturerCode = mfg4
+        ..control = c;
+      InitiateMeterTestOrDisplay2TokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    const cases = <List<Object>>[
+      [0x00001, '00000000000150997584', '01152921509036054672'],
+      [0x00002, '00000000000167774880', '01152921513331042448'],
+      [0x00004, '00000000000201328896', '01152921521920952465'],
+      [0x00008, '18446744073843772416', '01152921539100838034'],
+      [0x00010, '36893488147553322496', '01152921573460543637'],
+      [0x00020, '00000000000671093248', '01152921642180020378'],
+      [0x00040, '00000000001207974400', '01152921779618973828'],
+      [0x00080, '00000000002281728512', '01152922054496880824'],
+      [0x00100, '00000000004429208064', '01152922604252694700'],
+      [0x00200, '00000000008724195840', '01152923703764322536'],
+      [0x00400, '00000000017314105857', '01152925902787577952'],
+      [0x02000, '00000000137573173770', '01152956689113154192'],
+      [0x04000, '00000000275012127252', '01152991873485249680'],
+      [0x08000, '00000000549890034216', '01153062242229428368'],
+      [0x10000, '00000001099645848124', '01153202979717788816'],
+      [0x20000, '00000002199157475960', '01153484454694514832'],
+    ];
+
+    for (final c in cases) {
+      final ctrl = c[0] as int;
+      final tok1 = c[1] as String;
+      final tok2 = c[2] as String;
+      test('control=0x${ctrl.toRadixString(16)} → mfg2=$tok1, mfg4=$tok2', () {
+        expect(gen1(ctrl), equals(tok1));
+        expect(gen2(ctrl), equals(tok2));
+      });
+    }
+  });
+
+  // CTSA16 — InvalidVendingOrDecoderKeyException negative path. The
+  // Java upstream throws inside TransferElectricityCreditTokenGenerator
+  // when KT=1 + a malformed-Luhn PAN ("600727111111111153") + KEN=85
+  // are combined. The Dart Class 0 generator does not replicate that
+  // (KEN is metadata only and PAN Luhn is consumer-side validated via
+  // MeterPrimaryAccountNumber.fromString(..., validate: validate)), so
+  // the round-trip succeeds in Dart. Documented as a known parity
+  // skip pending an explicit `VendingUniqueDesKey`-aware DKGA-02
+  // validator in the generator.
+
+  // CTSA19 — KCT pair (Set1stSection + Set2ndSection) followed by a
+  // TransferElectricityCredit, exercising DKGA-02 + STA across 4
+  // (KRN, TI, KEN, SGC, vudk) parameter combinations. The Java
+  // upstream calls the KCT generators with `decoderKey == newDecoderKey`
+  // (no actual rollover — just exercises the wire-format encoding).
+  group('STS_531_1_0_02 CTSA19 (KCT + TransferElectricityCredit sweep)', () {
+    final vudkDefault = vudk;
+    final vudk94 = VendingUniqueDesKey(_hex('9494949494949494'));
+    final sgcDefault = sgc;
+    final sgc888 = SupplyGroupCode('888888');
+    const iinStr = '600727';
+    const iainStr = '00000000000';
+
+    DecoderKey derive({
+      required TariffIndex ti,
+      required KeyRevisionNumber krn,
+      required SupplyGroupCode sgcArg,
+      required VendingUniqueDesKey vudkArg,
+    }) => _dkga02(
+      keyType: keyType,
+      sgc: sgcArg,
+      ti: ti,
+      krn: krn,
+      iinStr: iinStr,
+      iainStr: iainStr,
+      vudk: vudkArg,
+    );
+
+    Map<String, String> genStep({
+      required DateTime issuedAt,
+      required KeyRevisionNumber krn,
+      required TariffIndex ti,
+      required int ken,
+      required SupplyGroupCode sgcArg,
+      required VendingUniqueDesKey vudkArg,
+    }) {
+      final dk = derive(ti: ti, krn: krn, sgcArg: sgcArg, vudkArg: vudkArg);
+      final kenho = KeyExpiryNumberHighOrder(
+        BitString.fromValue((ken >> 4) & 0xF, 4),
+      );
+      final kenlo = KeyExpiryNumberLowOrder(
+        BitString.fromValue(ken & 0xF, 4),
+      );
+      final tok1 = Set1stSectionDecoderKeyTokenGenerator(
+        decoderKey: dk,
+        encryptionAlgorithm: ea07,
+        keyExpiryNumberHighOrder: kenho,
+        keyRevisionNumber: krn,
+        rolloverKeyChange: RolloverKeyChange.fromBool(false),
+        keyType: keyType,
+        newDecoderKey: dk,
+      ).generateNew('request_id');
+      final tok2 = Set2ndSectionDecoderKeyTokenGenerator(
+        decoderKey: dk,
+        encryptionAlgorithm: ea07,
+        keyExpiryNumberLowOrder: kenlo,
+        tariffIndex: ti,
+        newDecoderKey: dk,
+      ).generateNew('request_id');
+      final tec = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = _tid(issuedAt)
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(tec);
+      return {
+        'set1': tok1.tokenNo,
+        'set2': tok2.tokenNo,
+        'tec': tec.tokenNo,
+      };
+    }
+
+    test('step1: KRN=1, TI=02, KEN=85, default SGC/vudk, 01/04/2002 10:05:00',
+        () {
+      final r = genStep(
+        issuedAt: DateTime.utc(2002, 4, 1, 10, 5, 0),
+        krn: KeyRevisionNumber(1),
+        ti: TariffIndex('02'),
+        ken: 85,
+        sgcArg: sgcDefault,
+        vudkArg: vudkDefault,
+      );
+      expect(r['set1'], equals('31337250623187821174'));
+      expect(r['set2'], equals('25365690080149305690'));
+      expect(r['tec'], equals('40823728429161791369'));
+    });
+
+    // Java upstream JUnit `@Before` resets `tariffIndex` to "01"
+    // before EACH @Test, so step2 / step3 inherit TI=01 even though
+    // step1 (run in isolation) had set it to "02". Only step1
+    // explicitly reassigns to "02".
+    test('step2: KRN=2, TI=01, KEN=85, 01/04/2002 10:10:00', () {
+      final r = genStep(
+        issuedAt: DateTime.utc(2002, 4, 1, 10, 10, 0),
+        krn: KeyRevisionNumber(2),
+        ti: TariffIndex('01'),
+        ken: 85,
+        sgcArg: sgcDefault,
+        vudkArg: vudkDefault,
+      );
+      expect(r['set1'], equals('44144630105464684572'));
+      expect(r['set2'], equals('31162823148845145254'));
+      expect(r['tec'], equals('07731698895042112630'));
+    });
+
+    test('step3: KRN=2, TI=01, KEN=255, 01/04/2002 10:15:00', () {
+      final r = genStep(
+        issuedAt: DateTime.utc(2002, 4, 1, 10, 15, 0),
+        krn: KeyRevisionNumber(2),
+        ti: TariffIndex('01'),
+        ken: 255,
+        sgcArg: sgcDefault,
+        vudkArg: vudkDefault,
+      );
+      expect(r['set1'], equals('27767097093580610394'));
+      expect(r['set2'], equals('37287781995519266010'));
+      expect(r['tec'], equals('02838142732283753296'));
+    });
+
+    test('step4: KRN=1, TI=01, KEN=85, SGC=888888, vudk=9494…, '
+        '01/04/2002 10:20:00', () {
+      final r = genStep(
+        issuedAt: DateTime.utc(2002, 4, 1, 10, 20, 0),
+        krn: KeyRevisionNumber(1),
+        ti: TariffIndex('01'),
+        ken: 85,
+        sgcArg: sgc888,
+        vudkArg: vudk94,
+      );
+      expect(r['set1'], equals('54413905164151863438'));
+      expect(r['set2'], equals('70335822849409372395'));
+      expect(r['tec'], equals('17352963892501043261'));
+    });
+  });
+
+  // CTSA24 — ClearCredit token via DKGA-04 + STA. 20-byte vending key,
+  // SGC=123457, KT=2, KRN=1, KEN=255, baseDate=1993.
+  group('STS_531_1_0_02 CTSA24 (ClearCredit via DKGA-04+STA)', () {
+    final vudk04 = VendingUniqueDesKey(
+      _hex('abababababababab949494949494949401234567'),
+    );
+    final sgc04 = SupplyGroupCode('123457');
+    final pan = MeterPrimaryAccountNumber.fromString(
+      '600727000000000009',
+      validate: MeterPanValidation.skip,
+    );
+
+    test('step1: 26/05/2008 08:00:00, register=0xFFFF → 08144275084202187413',
+        () {
+      final dk = DecoderKeyGeneratorAlgorithm04(
+        baseDate: BaseDate.date1993,
+        tariffIndex: ti,
+        supplyGroupCode: sgc04,
+        keyType: keyType,
+        keyRevisionNumber: KeyRevisionNumber(1),
+        encryptionAlgorithm: ea07,
+        meterPan: pan,
+        vendingKey: vudk04,
+      ).generate();
+      final token = ClearCreditTokenGenerator(dk, ea07).buildToken(
+        'request_id',
+        randomNo: _rnd5,
+        tokenIdentifier: _tid(DateTime.utc(2008, 5, 26, 8, 0, 0)),
+        register: Register(BitString.fromValue(0xFFFF, 16)),
+      );
+      ClearCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('08144275084202187413'));
+    });
+  });
+
+  // CTSA26 — KCT pair via DKGA-04 + STA with a base-date rotation
+  // (1993→2014→2035 family). decoderKey derived from
+  // (baseDate=2014, KRN=4); newDecoderKey derived from
+  // (newBaseDate=2035, newKRN=5). KCT delivers the new KRN=5 +
+  // rolloverKeyChange="1".
+  group('STS_531_1_0_02 CTSA26 (KCT via DKGA-04 + new base date)', () {
+    final vudk04 = VendingUniqueDesKey(
+      _hex('abababababababab949494949494949401234567'),
+    );
+    final sgc04 = SupplyGroupCode('123457');
+    final keyRevisionNumber = KeyRevisionNumber(4);
+    final newKeyRevisionNumber = KeyRevisionNumber(5);
+    final ken = 255;
+    final kenho = KeyExpiryNumberHighOrder(
+      BitString.fromValue((ken >> 4) & 0xF, 4),
+    );
+    final kenlo = KeyExpiryNumberLowOrder(
+      BitString.fromValue(ken & 0xF, 4),
+    );
+    final newRolloverKeyChange = RolloverKeyChange.fromBool(true);
+
+    Map<String, String> genStep(MeterPrimaryAccountNumber pan) {
+      final dk = DecoderKeyGeneratorAlgorithm04(
+        baseDate: BaseDate.date2014,
+        tariffIndex: ti,
+        supplyGroupCode: sgc04,
+        keyType: keyType,
+        keyRevisionNumber: keyRevisionNumber,
+        encryptionAlgorithm: ea07,
+        meterPan: pan,
+        vendingKey: vudk04,
+      ).generate();
+      final newDk = DecoderKeyGeneratorAlgorithm04(
+        baseDate: BaseDate.date2035,
+        tariffIndex: ti,
+        supplyGroupCode: sgc04,
+        keyType: keyType,
+        keyRevisionNumber: newKeyRevisionNumber,
+        encryptionAlgorithm: ea07,
+        meterPan: pan,
+        vendingKey: vudk04,
+      ).generate();
+      final tok1 = Set1stSectionDecoderKeyTokenGenerator(
+        decoderKey: dk,
+        encryptionAlgorithm: ea07,
+        keyExpiryNumberHighOrder: kenho,
+        keyRevisionNumber: newKeyRevisionNumber,
+        rolloverKeyChange: newRolloverKeyChange,
+        keyType: keyType,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      final tok2 = Set2ndSectionDecoderKeyTokenGenerator(
+        decoderKey: dk,
+        encryptionAlgorithm: ea07,
+        keyExpiryNumberLowOrder: kenlo,
+        tariffIndex: ti,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      return {'set1': tok1.tokenNo, 'set2': tok2.tokenNo};
+    }
+
+    test('step1: PAN=600727000000000009 → '
+        'Set1st=44163577485799480640, Set2nd=26556810679164981397', () {
+      final pan = MeterPrimaryAccountNumber.fromString(
+        '600727000000000009',
+        validate: MeterPanValidation.skip,
+      );
+      final r = genStep(pan);
+      expect(r['set1'], equals('44163577485799480640'));
+      expect(r['set2'], equals('26556810679164981397'));
+    });
+
+    test('step2: PAN=000001000000000082 → '
+        'Set1st=09658886361133612086, Set2nd=22434017728466234784', () {
+      final pan = MeterPrimaryAccountNumber.fromString(
+        '000001000000000082',
+        validate: MeterPanValidation.skip,
+      );
+      final r = genStep(pan);
+      expect(r['set1'], equals('09658886361133612086'));
+      expect(r['set2'], equals('22434017728466234784'));
+    });
+  });
 }

@@ -53,11 +53,16 @@ class IndividualAccountIdentificationNumber implements _Entity {
     }
   }
 
-  /// Build an IAIN from a manufacturer code + decoder serial number;
-  /// the trailing Luhn check digit is computed via Nectar's variant.
+  /// Build an IAIN from a manufacturer code + decoder serial number.
+  ///
+  /// If [drnCheckDigit] is null the trailing Luhn check digit is
+  /// computed via Nectar's variant; otherwise the supplied digit is
+  /// trusted verbatim (mirrors the Java 3-arg constructor used by
+  /// `MeterPrimaryAccountNumber` in NO_METER_PAN_VALIDATION mode).
   factory IndividualAccountIdentificationNumber.fromComponents({
     required String manufacturerCode,
     required String decoderSerialNumber,
+    int? drnCheckDigit,
   }) {
     if (!(RegExp(r'^([0-9]{2}|[0-9]{4})$').hasMatch(manufacturerCode))) {
       throw InvalidManufacturerCodeException(
@@ -70,7 +75,14 @@ class IndividualAccountIdentificationNumber implements _Entity {
       );
     }
     final combined = '$manufacturerCode$decoderSerialNumber';
-    final check = LuhnAlgorithm.generateCheckDigit(int.parse(combined));
+    final check =
+        drnCheckDigit ??
+        LuhnAlgorithm.generateCheckDigit(int.parse(combined));
+    if (check < 0 || check > 9) {
+      throw InvalidDrnCheckDigitException(
+        'DRN check digit must be 0..9: $check',
+      );
+    }
     return IndividualAccountIdentificationNumber('$combined$check');
   }
 
@@ -215,13 +227,31 @@ class PrimaryAccountNumberBlock implements _Entity {
   String get name => 'Primary Account Number Block';
 }
 
+/// Validation mode for the [MeterPrimaryAccountNumber.fromString]
+/// parser. Mirrors the Java
+/// `MeterPrimaryAccountNumber.Validate` enum used by the upstream
+/// `tokens-service` test suite.
+enum MeterPanValidation { validate, skip }
+
 /// 18-digit Meter Primary Account Number built from an IIN + IAIN.
 ///
 /// Layout: `<IIN><IAIN><checkDigit>`. The check digit is Nectar's
 /// (non-standard) Luhn variant over `IIN || IAIN` parsed as an integer.
-/// Only the `(IIN, IAIN)` constructor is implemented — the string
-/// parsing constructor with legacy-IIN detection is out of scope.
+///
+/// Construction:
+///   - `MeterPrimaryAccountNumber({iin, iain})` — build from already
+///     validated components.
+///   - `MeterPrimaryAccountNumber.fromString(panStr, validate: ...)`
+///     — parse an 18-digit MeterPAN string. With the legacy `600727`
+///     prefix the IIN is `"600727"` and the manufacturer code is the
+///     2-digit slice `panStr[6..8]`; otherwise the IIN collapses to
+///     `"0000"` and the manufacturer code is the 4-digit slice
+///     `panStr[4..8]`. The DSN is always `panStr[8..16]`, the
+///     extracted DRN check digit is `panStr[len-2]`, and the PAN
+///     check digit is `panStr[len-1]`.
 class MeterPrimaryAccountNumber implements _Entity {
+  static const _legacyIin = '600727';
+
   final IssuerIdentificationNumber issuerIdentificationNumber;
   final IndividualAccountIdentificationNumber
   individualAccountIdentificationNumber;
@@ -255,6 +285,76 @@ class MeterPrimaryAccountNumber implements _Entity {
         'Generated MeterPAN must be exactly 18 digits',
       );
     }
+  }
+
+  /// Parse an 18-digit MeterPAN string. Mirrors the upstream Java
+  /// `MeterPrimaryAccountNumber(String, Validate)` constructor.
+  ///
+  /// - With [MeterPanValidation.validate] (default) the extracted DRN
+  ///   check digit must equal the Luhn check of the manufacturer code
+  ///   + DSN, and the extracted PAN check digit must equal the Luhn
+  ///   check of IIN ‖ IAIN. The Java compliance suite exercises this
+  ///   path via `CTSA17` with the 22-digit string
+  ///   `"1234567890411111111113"` — the DRN slice mismatches, so the
+  ///   parser throws [InvalidIAINNumberException].
+  /// - With [MeterPanValidation.skip] the extracted DRN check digit is
+  ///   trusted verbatim and no PAN check verification runs. The
+  ///   compliance vectors use this mode (e.g.
+  ///   `"600727000000000009"`, `"000001000000000082"`).
+  factory MeterPrimaryAccountNumber.fromString(
+    String pan, {
+    MeterPanValidation validate = MeterPanValidation.validate,
+  }) {
+    if (pan.length < 18 || !RegExp(r'^[0-9]+$').hasMatch(pan)) {
+      throw const InvalidMeterPrimaryAccountNumberException(
+        'MeterPAN must contain at least 18 digits',
+      );
+    }
+    final isLegacy = pan.startsWith(_legacyIin);
+    final iin = IssuerIdentificationNumber(isLegacy ? _legacyIin : '0000');
+    final mfg = isLegacy ? pan.substring(6, 8) : pan.substring(4, 8);
+    final dsn = pan.substring(8, 16);
+    final extractedDrnCheckDigit = int.parse(
+      pan.substring(pan.length - 2, pan.length - 1),
+    );
+    final extractedPanCheckDigit = int.parse(
+      pan.substring(pan.length - 1, pan.length),
+    );
+
+    final IndividualAccountIdentificationNumber iain;
+    switch (validate) {
+      case MeterPanValidation.validate:
+        iain = IndividualAccountIdentificationNumber.fromComponents(
+          manufacturerCode: mfg,
+          decoderSerialNumber: dsn,
+        );
+        final computedDrn = int.parse(iain.value.substring(iain.value.length - 1));
+        if (computedDrn != extractedDrnCheckDigit) {
+          throw const InvalidIAINNumberException(
+            'Invalid Individual Account Identification Number',
+          );
+        }
+        break;
+      case MeterPanValidation.skip:
+        iain = IndividualAccountIdentificationNumber.fromComponents(
+          manufacturerCode: mfg,
+          decoderSerialNumber: dsn,
+          drnCheckDigit: extractedDrnCheckDigit,
+        );
+        break;
+    }
+
+    final result = MeterPrimaryAccountNumber(
+      issuerIdentificationNumber: iin,
+      individualAccountIdentificationNumber: iain,
+    );
+    if (validate == MeterPanValidation.validate &&
+        result.checkDigit != extractedPanCheckDigit) {
+      throw const InvalidMeterPrimaryAccountNumberException(
+        'Invalid Meter Primary Account Number',
+      );
+    }
+    return result;
   }
 
   @override
