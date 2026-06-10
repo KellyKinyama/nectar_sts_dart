@@ -55,9 +55,9 @@ abstract class TokenIssuer {
   /// returns 200, an unhealthy one returns 503. Default impl just
   /// reports the issuer name; remote-backed issuers should override.
   FutureOr<Map<String, Object?>> checkBackend() => {
-        'ok': true,
-        'backend': name,
-      };
+    'ok': true,
+    'backend': name,
+  };
 
   /// Per-node operational status. The HTTP layer surfaces this on
   /// `GET /v1/status/nodes`. Each entry carries an arbitrary `info`
@@ -66,11 +66,11 @@ abstract class TokenIssuer {
   /// entry for in-process backends; remote-backed issuers should
   /// override to enumerate their cluster.
   FutureOr<List<Map<String, Object?>>> getNodeStatus() async => [
-        {
-          'info': {'backend': name},
-          'alerts': const <Map<String, Object?>>[],
-        },
-      ];
+    {
+      'info': {'backend': name},
+      'alerts': const <Map<String, Object?>>[],
+    },
+  ];
 
   /// Issue the full Key Change Token (KCT) bundle migrating a meter
   /// to a new SGC / KRN / TI. The HTTP layer surfaces this on
@@ -86,10 +86,9 @@ abstract class TokenIssuer {
   FutureOr<List<Map<String, Object?>>> issueKeyChangeTokens(
     String requestId,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support atomic Key Change Token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support atomic Key Change Token issuance.',
+  );
 
   /// Issue a Class 2 Management/Secondary-Engineering (MSE) token.
   /// [subclass] picks the operation (`PrismHSMConnector.MseToken`):
@@ -106,10 +105,9 @@ abstract class TokenIssuer {
     int subclass,
     double transferAmount,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support MSE token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support MSE token issuance.',
+  );
 
   /// Issue a Class 1 / 3 Non-Meter-Specific Engineering (NMSE) test
   /// token. The token is independent of any meter's keys; the
@@ -126,10 +124,9 @@ abstract class TokenIssuer {
     int subclass,
     int control,
     int manufacturerCode,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support NMSE meter-test token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support NMSE meter-test token issuance.',
+  );
 
   /// Issue a Class 0 currency-credit token (subclasses 4–7:
   /// `ElectricityCurrency`, `WaterCurrency`, `GasCurrency`,
@@ -144,10 +141,9 @@ abstract class TokenIssuer {
     String requestId,
     int subclass,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support currency-credit token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support currency-credit token issuance.',
+  );
 
   /// Idempotency replay: re-fetch the tokens previously issued for
   /// [originalRequestId]. Used when the original RPC timed out or
@@ -162,10 +158,9 @@ abstract class TokenIssuer {
   FutureOr<List<Map<String, Object?>>> fetchTokenResult(
     String requestId,
     String originalRequestId,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support token-result replay.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support token-result replay.',
+  );
 
   /// Verify a 20-digit token against a meter configuration WITHOUT
   /// throwing on invalid. Returns the raw
@@ -179,10 +174,9 @@ abstract class TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support token verification.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support token verification.',
+  );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -205,31 +199,29 @@ class VirtualHsmIssuer implements TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) =>
-      hsm.decodeToken(requestId, tokenNo, params);
+  ) => hsm.decodeToken(requestId, tokenNo, params);
 
   @override
   Future<Map<String, Object?>> checkBackend() async => {
-        'ok': true,
-        'backend': name,
-      };
+    'ok': true,
+    'backend': name,
+  };
 
   @override
   Future<List<Map<String, Object?>>> getNodeStatus() async => [
-        {
-          'info': {'backend': name},
-          'alerts': const <Map<String, Object?>>[],
-        },
-      ];
+    {
+      'info': {'backend': name},
+      'alerts': const <Map<String, Object?>>[],
+    },
+  ];
 
   @override
   Future<List<Map<String, Object?>>> issueKeyChangeTokens(
     String requestId,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support atomic Key Change Token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support atomic Key Change Token issuance.',
+  );
 
   @override
   Future<List<Map<String, Object?>>> issueMseToken(
@@ -237,10 +229,9 @@ class VirtualHsmIssuer implements TokenIssuer {
     int subclass,
     double transferAmount,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support MSE token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support MSE token issuance.',
+  );
 
   @override
   Future<Map<String, Object?>> issueMeterTestToken(
@@ -248,29 +239,26 @@ class VirtualHsmIssuer implements TokenIssuer {
     int subclass,
     int control,
     int manufacturerCode,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support NMSE meter-test token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support NMSE meter-test token issuance.',
+  );
 
   @override
   Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
     String requestId,
     int subclass,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support currency-credit token issuance.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support currency-credit token issuance.',
+  );
 
   @override
   Future<List<Map<String, Object?>>> fetchTokenResult(
     String requestId,
     String originalRequestId,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support token-result replay.',
-      );
+  ) => throw NotImplementedException(
+    '$name does not support token-result replay.',
+  );
 
   @override
   Future<Map<String, Object?>> verifyToken(
@@ -334,8 +322,8 @@ class VirtualHsmIssuer implements TokenIssuer {
 Map<String, Object?> _virtualHsmVerifyTokenShape(String tokenNo, Token token) {
   final amount =
       token is TransferElectricityCreditToken && token.amountPurchased != null
-          ? token.amountPurchased!.unitsPurchased.toString()
-          : '';
+      ? token.amountPurchased!.unitsPurchased.toString()
+      : '';
   return {
     'tokenNo': tokenNo,
     'subclass': token.tokenSubClass?.bitString.value ?? 0,
@@ -412,7 +400,7 @@ class PrismIssuer implements TokenIssuer {
   /// Test-only ctor: inject an in-process plain-TCP factory so the
   /// fake Thrift server in `test/prism/` doesn't need certificates.
   PrismIssuer.forTesting(this.config, SocketFactory socketFactory)
-      : _socketFactoryOverride = socketFactory;
+    : _socketFactoryOverride = socketFactory;
 
   @override
   String get name => 'PrismIssuer(${config.host}:${config.port})';
@@ -825,7 +813,8 @@ class PrismIssuer implements TokenIssuer {
       _requiredString(params, VirtualHsmParams.keyRevisionNo),
     );
     final ti = int.parse(_requiredString(params, VirtualHsmParams.tariffIndex));
-    final ken = int.tryParse(
+    final ken =
+        int.tryParse(
           (params[VirtualHsmParams.keyExpiryNumberHighOrder] ?? '0').toString(),
         ) ??
         0;

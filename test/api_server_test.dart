@@ -7,10 +7,10 @@ import 'package:shelf/shelf.dart';
 import 'package:test/test.dart';
 
 TokenIssuer _hsm() => VirtualHsmIssuer(
-  VirtualHsm(
-    VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
-  ),
-);
+      VirtualHsm(
+        VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+      ),
+    );
 
 class _UnhealthyIssuer implements TokenIssuer {
   @override
@@ -18,10 +18,10 @@ class _UnhealthyIssuer implements TokenIssuer {
 
   @override
   Future<Map<String, Object?>> checkBackend() async => {
-    'ok': false,
-    'backend': name,
-    'error': 'boom: connection refused',
-  };
+        'ok': false,
+        'backend': name,
+        'error': 'boom: connection refused',
+      };
 
   @override
   Future<List<Map<String, Object?>>> getNodeStatus() async =>
@@ -36,13 +36,15 @@ class _UnhealthyIssuer implements TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> issueKeyChangeTokens(
     String requestId,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> issueMseToken(
@@ -50,7 +52,8 @@ class _UnhealthyIssuer implements TokenIssuer {
     int subclass,
     double transferAmount,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<Map<String, Object?>> issueMeterTestToken(
@@ -58,45 +61,49 @@ class _UnhealthyIssuer implements TokenIssuer {
     int subclass,
     int control,
     int manufacturerCode,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
     String requestId,
     int subclass,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> fetchTokenResult(
     String requestId,
     String originalRequestId,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<Map<String, Object?>> verifyToken(
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 }
 
 Map<String, dynamic> _baseParams() => {
-  'decoder_key_generation_algorithm': '02',
-  'encryption_algorithm': 'sta',
-  'key_type': 2,
-  'supply_group_code': '123456',
-  'tariff_index': '07',
-  'key_revision_no': 1,
-  'issuer_identification_no': '600727',
-  'decoder_reference_number': '12345678901',
-  'class': '0',
-  'subclass': '0',
-  'amount': 25.5,
-  'token_id': '2024-06-01T12:00:00Z',
-  'random_no': 7,
-  'base_date': '1993',
-};
+      'decoder_key_generation_algorithm': '02',
+      'encryption_algorithm': 'sta',
+      'key_type': 2,
+      'supply_group_code': '123456',
+      'tariff_index': '07',
+      'key_revision_no': 1,
+      'issuer_identification_no': '600727',
+      'decoder_reference_number': '12345678901',
+      'class': '0',
+      'subclass': '0',
+      'amount': 25.5,
+      'token_id': '2024-06-01T12:00:00Z',
+      'random_no': 7,
+      'base_date': '1993',
+    };
 
 Future<Map<String, dynamic>> _post(
   Handler handler,
@@ -330,9 +337,8 @@ void main() {
 
         final gen = await _post(handler, '/v1/tokens', params);
         expect(gen['status'], 200, reason: 'generate failed: ${gen['body']}');
-        final tokenNo =
-            (((gen['body'] as Map)['data'] as Map)['token'] as List).first
-                as Map;
+        final tokenNo = (((gen['body'] as Map)['data'] as Map)['token'] as List)
+            .first as Map;
         final tn = tokenNo['token_no'] as String;
 
         final r = await _post(handler, '/v1/tokens/$tn/verify', params);
@@ -357,10 +363,8 @@ void main() {
 
         final gen = await _post(handler, '/v1/tokens', params);
         expect(gen['status'], 200);
-        final tn =
-            ((((gen['body'] as Map)['data'] as Map)['token'] as List).first
-                    as Map)['token_no']
-                as String;
+        final tn = ((((gen['body'] as Map)['data'] as Map)['token'] as List)
+            .first as Map)['token_no'] as String;
         // Twiddle a single digit so the CRC fails.
         final tampered = tn.substring(0, 19) + (tn[19] == '0' ? '1' : '0');
 
@@ -512,10 +516,8 @@ void main() {
       final log = VendingLog();
       final handler = buildApiHandler(_hsm(), log: log);
       final gen = await _post(handler, '/v1/tokens', _baseParams());
-      final tokenNo =
-          (((gen['body'] as Map)['data'] as Map)['token'] as List)
-                  .first['token_no']
-              as String;
+      final tokenNo = (((gen['body'] as Map)['data'] as Map)['token'] as List)
+          .first['token_no'] as String;
 
       final hit = await _get(handler, '/v1/tokens/$tokenNo');
       expect(hit['status'], 200);
@@ -578,19 +580,19 @@ void main() {
 
   group('meter registry', () {
     Map<String, dynamic> _registerBody() => {
-      'serial': 'METER-001',
-      'subscriber_label': 'Acme Bakery',
-      'encryption_algorithm': 'sta',
-      'identity': {
-        'issuer_identification_no': '600727',
-        'decoder_reference_number': '12345678901',
-        'key_type': 2,
-        'supply_group_code': '123456',
-        'tariff_index': '07',
-        'key_revision_no': 1,
-        'decoder_key_generation_algorithm': '02',
-      },
-    };
+          'serial': 'METER-001',
+          'subscriber_label': 'Acme Bakery',
+          'encryption_algorithm': 'sta',
+          'identity': {
+            'issuer_identification_no': '600727',
+            'decoder_reference_number': '12345678901',
+            'key_type': 2,
+            'supply_group_code': '123456',
+            'tariff_index': '07',
+            'key_revision_no': 1,
+            'decoder_key_generation_algorithm': '02',
+          },
+        };
 
     test('POST /v1/meters registers and GET /v1/meters lists it', () async {
       final reg = MeterRegistry();
@@ -755,11 +757,12 @@ void main() {
 
   group('tariff / pricing', () {
     TariffBook _book() => TariffBook(
-      byTariffIndex: {
-        '07': const Tariff(currency: 'KES', pricePerKwh: 24.0),
-        '01': const Tariff(currency: 'IDR', pricePerKwh: 1444, adminFee: 2500),
-      },
-    );
+          byTariffIndex: {
+            '07': const Tariff(currency: 'KES', pricePerKwh: 24.0),
+            '01': const Tariff(
+                currency: 'IDR', pricePerKwh: 1444, adminFee: 2500),
+          },
+        );
 
     test(
       'amount_money is converted to kWh and reported in pricing block',
@@ -924,6 +927,84 @@ void main() {
       final id = (r['body'] as Map)['request_id'] as String;
       expect(id, startsWith('req-'));
       expect(id.length, greaterThan(4));
+    });
+  });
+
+  group('Request logging + X-Request-Id response header', () {
+    test('every response echoes X-Request-Id and emits one log entry',
+        () async {
+      final entries = <Map<String, Object?>>[];
+      final handler = buildApiHandler(_hsm(), logSink: entries.add);
+
+      final req = Request('GET', Uri.parse('http://localhost/healthz'));
+      final resp = await handler(req);
+      await resp.readAsString();
+
+      expect(resp.statusCode, 200);
+      final rid = resp.headers['x-request-id'];
+      expect(rid, isNotNull);
+      expect(rid, startsWith('req-'));
+
+      expect(entries, hasLength(1));
+      final e = entries.single;
+      expect(e['event'], 'http');
+      expect(e['method'], 'GET');
+      expect(e['path'], '/healthz');
+      expect(e['status'], 200);
+      expect(e['request_id'], rid);
+      expect(e['duration_ms'], isA<int>());
+      expect(e['duration_ms'] as int, greaterThanOrEqualTo(0));
+    });
+
+    test(
+      'caller-supplied X-Request-Id is propagated to log + response header + body',
+      () async {
+        final entries = <Map<String, Object?>>[];
+        final handler = buildApiHandler(_hsm(), logSink: entries.add);
+
+        final req = Request(
+          'POST',
+          Uri.parse('http://localhost/v1/tokens'),
+          headers: {
+            'content-type': 'application/json',
+            'X-Request-Id': 'caller-trace-42',
+          },
+          body: jsonEncode(_baseParams()),
+        );
+        final resp = await handler(req);
+        final body = jsonDecode(await resp.readAsString()) as Map;
+
+        expect(resp.statusCode, 200);
+        expect(resp.headers['x-request-id'], 'caller-trace-42');
+        expect(body['request_id'], 'caller-trace-42');
+        expect(entries.single['request_id'], 'caller-trace-42');
+        expect(entries.single['status'], 200);
+      },
+    );
+
+    test('error responses log the correct status + share the request id',
+        () async {
+      final entries = <Map<String, Object?>>[];
+      final handler = buildApiHandler(_hsm(), logSink: entries.add);
+
+      // Malformed JSON body -> FormatException -> 400 via error middleware.
+      final req = Request(
+        'POST',
+        Uri.parse('http://localhost/v1/tokens'),
+        headers: {
+          'content-type': 'application/json',
+          'X-Request-Id': 'caller-broken-1',
+        },
+        body: '{not json',
+      );
+      final resp = await handler(req);
+      final body = jsonDecode(await resp.readAsString()) as Map;
+
+      expect(resp.statusCode, 400);
+      expect(resp.headers['x-request-id'], 'caller-broken-1');
+      expect(body['request_id'], 'caller-broken-1');
+      expect(entries.single['status'], 400);
+      expect(entries.single['request_id'], 'caller-broken-1');
     });
   });
 }

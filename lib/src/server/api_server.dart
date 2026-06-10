@@ -133,22 +133,47 @@ Map<String, dynamic> _envelope({
   required String message,
   required String requestId,
   Object? data,
-}) => {
-  'status': {'code': code, 'message': message},
-  'request_id': requestId,
-  if (data != null) 'data': data,
-};
+}) =>
+    {
+      'status': {'code': code, 'message': message},
+      'request_id': requestId,
+      if (data != null) 'data': data,
+    };
 
 Response _json(int status, Map<String, dynamic> body) => Response(
-  status,
-  body: jsonEncode(body),
-  headers: {'content-type': 'application/json; charset=utf-8'},
-);
+      status,
+      body: jsonEncode(body),
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
 
 String _newRequestId() =>
     'req-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
 
 final _requestIdPattern = RegExp(r'^[A-Za-z0-9._-]{1,128}$');
+
+/// Structured-log sink. Each entry is a JSON-shaped map; the default
+/// sink in [buildApiHandler] is a no-op so test runs stay quiet.
+/// Wire `(m) => print(jsonEncode(m))` (or a real logger) in production.
+typedef LogSink = void Function(Map<String, Object?> entry);
+
+void _noopLog(Map<String, Object?> _) {}
+
+/// Mutable per-request slot that [_requestLoggingMiddleware] stashes
+/// in `Request.context`. The handler's [_resolveRequestId] writes the
+/// final id back here so the middleware can log + echo a value that
+/// matches what the response envelope reports — even when the id came
+/// from the JSON body rather than the `X-Request-Id` header.
+class _RequestIdSlot {
+  String? value;
+}
+
+/// Read the request id already resolved by [_requestLoggingMiddleware]
+/// or [_resolveRequestId]. Returns `null` when neither has run.
+String? _contextRequestId(Request request) {
+  final slot = request.context['request_id_slot'];
+  if (slot is _RequestIdSlot && slot.value != null) return slot.value;
+  return null;
+}
 
 /// Resolve the request id for an issue request, preferring (in order)
 /// the `X-Request-Id` header, then `body['request_id']`, then a
@@ -157,15 +182,10 @@ final _requestIdPattern = RegExp(r'^[A-Za-z0-9._-]{1,128}$');
 /// removed (not just read) so it doesn't leak through to issuer code
 /// as a meter-config param.
 String _resolveRequestId(Request request, Map<String, dynamic>? body) {
-  final fromHeader = request.headers['x-request-id'];
-  if (fromHeader != null && fromHeader.isNotEmpty) {
-    if (!_requestIdPattern.hasMatch(fromHeader)) {
-      throw _BadRequest(
-        'X-Request-Id "$fromHeader" must match ${_requestIdPattern.pattern}',
-      );
-    }
-    return fromHeader;
-  }
+  // Always strip the body field first so it does not leak through to
+  // the issuer as a meter-config param, even when the header / context
+  // value wins.
+  String? bodyId;
   if (body != null) {
     final fromBody = body.remove('request_id');
     if (fromBody is String && fromBody.isNotEmpty) {
@@ -174,10 +194,32 @@ String _resolveRequestId(Request request, Map<String, dynamic>? body) {
           'request_id "$fromBody" must match ${_requestIdPattern.pattern}',
         );
       }
-      return fromBody;
+      bodyId = fromBody;
     }
   }
-  return _newRequestId();
+  // Header takes precedence over the body field. The logging middleware
+  // pre-validates and pre-fills the slot when a header is supplied, so
+  // an already-populated slot means "header path".
+  final slot = request.context['request_id_slot'];
+  final headerAlreadyResolved = slot is _RequestIdSlot && slot.value != null;
+  if (headerAlreadyResolved) {
+    return (slot as _RequestIdSlot).value!;
+  }
+  final fromHeader = request.headers['x-request-id'];
+  if (fromHeader != null && fromHeader.isNotEmpty) {
+    // Middleware should have caught invalid headers, but tests that
+    // bypass the middleware still rely on this validation.
+    if (!_requestIdPattern.hasMatch(fromHeader)) {
+      throw _BadRequest(
+        'X-Request-Id "$fromHeader" must match ${_requestIdPattern.pattern}',
+      );
+    }
+    if (slot is _RequestIdSlot) slot.value = fromHeader;
+    return fromHeader;
+  }
+  final id = bodyId ?? _newRequestId();
+  if (slot is _RequestIdSlot) slot.value = id;
+  return id;
 }
 
 /// Build a `shelf` `Handler` bound to [issuer]. Pass [bearerToken]
@@ -189,6 +231,7 @@ Handler buildApiHandler(
   VendingLogStore? log,
   MeterStore? registry,
   TariffBook? tariffs,
+  LogSink? logSink,
 }) {
   final router = Router()
     ..get('/healthz', _healthHandler)
@@ -268,6 +311,7 @@ Handler buildApiHandler(
     );
 
   return Pipeline()
+      .addMiddleware(_requestLoggingMiddleware(logSink ?? _noopLog))
       .addMiddleware(_authMiddleware(bearerToken))
       .addMiddleware(_errorHandlingMiddleware())
       .addHandler(router.call);
@@ -335,8 +379,7 @@ Future<Response> _generateHandler(
         409,
         _envelope(
           code: 409,
-          message:
-              'TID collision: a token with tid_minutes=$tid was already '
+          message: 'TID collision: a token with tid_minutes=$tid was already '
               'issued for this meter$priorMsg. Use a fresh token_id.',
           requestId: requestId,
         ),
@@ -665,13 +708,13 @@ Future<Response> _lookupHandler(
 // ---- meter registry endpoints ----------------------------------
 
 Response _registryDisabled(String requestId) => _json(
-  503,
-  _envelope(
-    code: 503,
-    message: 'Meter registry is not enabled on this server',
-    requestId: requestId,
-  ),
-);
+      503,
+      _envelope(
+        code: 503,
+        message: 'Meter registry is not enabled on this server',
+        requestId: requestId,
+      ),
+    );
 
 Future<Response> _registerMeterHandler(
   Request request,
@@ -709,10 +752,10 @@ Future<Response> _registerMeterHandler(
   final MeterIdentity identity;
   try {
     identity = MeterIdentity.fromJson({
-      'issuer_identification_no': identityJson['issuer_identification_no']
-          ?.toString(),
-      'decoder_reference_number': identityJson['decoder_reference_number']
-          ?.toString(),
+      'issuer_identification_no':
+          identityJson['issuer_identification_no']?.toString(),
+      'decoder_reference_number':
+          identityJson['decoder_reference_number']?.toString(),
       'key_type': identityJson['key_type'],
       'supply_group_code': identityJson['supply_group_code']?.toString(),
       'tariff_index': identityJson['tariff_index']?.toString(),
@@ -729,9 +772,8 @@ Future<Response> _registerMeterHandler(
   final meter = RegisteredMeter(
     serial: serial,
     identity: identity,
-    encryptionAlgorithm: (body['encryption_algorithm'] ?? 'sta')
-        .toString()
-        .toLowerCase(),
+    encryptionAlgorithm:
+        (body['encryption_algorithm'] ?? 'sta').toString().toLowerCase(),
     subscriberLabel: body['subscriber_label']?.toString(),
     registeredAt: DateTime.now().toUtc(),
   );
@@ -751,8 +793,7 @@ Future<Response> _registerMeterHandler(
       412,
       _envelope(
         code: 412,
-        message:
-            'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
+        message: 'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
             'Create it in the Laravel dashboard before registering this '
             'meter.',
         requestId: requestId,
@@ -1151,14 +1192,79 @@ Map<String, dynamic> _tokenToJson(Token token) {
     }
     if (token.tokenIdentifier != null) {
       base['token_id_minutes'] = token.tokenIdentifier!.bitString.value;
-      base['token_id_time'] = token.tokenIdentifier!.timeOfIssue
-          .toIso8601String();
+      base['token_id_time'] =
+          token.tokenIdentifier!.timeOfIssue.toIso8601String();
     }
     if (token.randomNo != null) {
       base['random_no'] = token.randomNo!.bitString.value;
     }
   }
   return base;
+}
+
+/// Resolves a per-request id (honors `X-Request-Id` header, else
+/// generates one), stashes it in `request.context['request_id']` so
+/// downstream handlers and the error middleware can correlate, echoes
+/// it back on the response as `X-Request-Id`, and emits one structured
+/// log entry per request through [sink].
+///
+/// Log entry shape:
+/// ```
+/// {event: 'http', method, path, status, request_id, duration_ms}
+/// ```
+Middleware _requestLoggingMiddleware(LogSink sink) {
+  return (Handler inner) {
+    return (Request request) async {
+      // Validate the header up-front so we fail fast (the handler may
+      // never read the body otherwise — e.g. GET endpoints).
+      final fromHeader = request.headers['x-request-id'];
+      if (fromHeader != null &&
+          fromHeader.isNotEmpty &&
+          !_requestIdPattern.hasMatch(fromHeader)) {
+        final genId = _newRequestId();
+        final resp = _json(
+          400,
+          _envelope(
+            code: 400,
+            message: 'X-Request-Id "$fromHeader" must match '
+                '${_requestIdPattern.pattern}',
+            requestId: genId,
+          ),
+        );
+        sink({
+          'event': 'http',
+          'method': request.method,
+          'path': '/${request.url.path}',
+          'status': 400,
+          'request_id': genId,
+          'duration_ms': 0,
+        });
+        return resp.change(headers: {'x-request-id': genId});
+      }
+      final slot = _RequestIdSlot();
+      if (fromHeader != null && fromHeader.isNotEmpty) {
+        slot.value = fromHeader;
+      }
+      final tagged = request.change(context: {'request_id_slot': slot});
+      final sw = Stopwatch()..start();
+      Response resp;
+      try {
+        resp = await inner(tagged);
+      } finally {
+        sw.stop();
+      }
+      final requestId = slot.value ?? _newRequestId();
+      sink({
+        'event': 'http',
+        'method': request.method,
+        'path': '/${request.url.path}',
+        'status': resp.statusCode,
+        'request_id': requestId,
+        'duration_ms': sw.elapsedMilliseconds,
+      });
+      return resp.change(headers: {'x-request-id': requestId});
+    };
+  };
 }
 
 Middleware _authMiddleware(String? configuredToken) {
@@ -1176,7 +1282,7 @@ Middleware _authMiddleware(String? configuredToken) {
           _envelope(
             code: 401,
             message: 'Unauthorized',
-            requestId: _newRequestId(),
+            requestId: _contextRequestId(request) ?? _newRequestId(),
           ),
         );
       }
@@ -1188,12 +1294,13 @@ Middleware _authMiddleware(String? configuredToken) {
 Middleware _errorHandlingMiddleware() {
   return (Handler inner) {
     return (Request request) async {
+      String rid() => _contextRequestId(request) ?? _newRequestId();
       try {
         return await inner(request);
       } on _BadRequest catch (e) {
         return _json(
           400,
-          _envelope(code: 400, message: e.message, requestId: _newRequestId()),
+          _envelope(code: 400, message: e.message, requestId: rid()),
         );
       } on _MeterNotFound catch (e) {
         return _json(
@@ -1201,7 +1308,7 @@ Middleware _errorHandlingMiddleware() {
           _envelope(
             code: 404,
             message: 'No meter registered with serial "${e.serial}"',
-            requestId: _newRequestId(),
+            requestId: rid(),
           ),
         );
       } on FormatException catch (e) {
@@ -1210,13 +1317,13 @@ Middleware _errorHandlingMiddleware() {
           _envelope(
             code: 400,
             message: 'Invalid JSON: ${e.message}',
-            requestId: _newRequestId(),
+            requestId: rid(),
           ),
         );
       } on NotImplementedException catch (e) {
         return _json(
           501,
-          _envelope(code: 501, message: e.message, requestId: _newRequestId()),
+          _envelope(code: 501, message: e.message, requestId: rid()),
         );
       } on StsError catch (e) {
         return _json(
@@ -1224,7 +1331,7 @@ Middleware _errorHandlingMiddleware() {
           _envelope(
             code: 400,
             message: '${e.runtimeType}: ${e.message}',
-            requestId: _newRequestId(),
+            requestId: rid(),
           ),
         );
       } catch (e) {
@@ -1233,7 +1340,7 @@ Middleware _errorHandlingMiddleware() {
           _envelope(
             code: 500,
             message: 'Internal error: $e',
-            requestId: _newRequestId(),
+            requestId: rid(),
           ),
         );
       }
