@@ -9,6 +9,12 @@
 ///   - `issueKeyChangeTokens(messageId, accessToken, meterConfig,
 ///     newConfig)` → returns `List<PrismToken>` (2 entries for STA/DEA,
 ///     4 for MISTY1; must be applied as a coordinated set)
+///   - `issueMseToken(messageId, accessToken, meterConfig, subclass,
+///     transferAmount, tokenTime, flags)` → returns `List<PrismToken>`
+///     (Class 2 management tokens: ClearCredit, ClearTamper, etc.)
+///   - `issueMeterTestToken(messageId, accessToken, subclass, control,
+///     mfrcode)` → returns a single `PrismMeterTestToken` (Class 1/3
+///     NMSE display / test tokens)
 ///   - `verifyToken(messageId, accessToken, meterConfig, tokenDec)` →
 ///     returns `VerifyResult`
 ///   - `ping(sleepMs, echo)` → returns the echo verbatim (liveness)
@@ -21,9 +27,9 @@
 /// Struct field IDs + types are taken verbatim from the Java
 /// Thrift-generated reference (`TokenApi.java`, `SessionOptions.java`,
 /// `SignInResult.java`, `MeterConfigIn.java`, `MeterConfigAmendment.java`,
-/// `Token.java`, `VerifyResult.java`, `NodeStatus.java`, `Alert.java`,
-/// `ApiException.java`). See the package doc on
-/// `thrift_binary_protocol.dart` for the location.
+/// `Token.java`, `MeterTestToken.java`, `VerifyResult.java`,
+/// `NodeStatus.java`, `Alert.java`, `ApiException.java`). See the
+/// package doc on `thrift_binary_protocol.dart` for the location.
 library;
 
 import 'dart:async';
@@ -447,6 +453,127 @@ class PrismNodeStatus {
   }
 }
 
+/// `MeterTestToken` — what `issueMeterTestToken` returns. Smaller
+/// projection than [PrismToken] (no SGC/KEN/etc); carries the
+/// control word + manufacturer code that drove issue.
+class PrismMeterTestToken {
+  final String drn; // (1)
+  final String pan; // (2)
+  final int tokenClass; // (10) I16
+  final int subclass; // (11) I16
+  final int control; // (12) I64
+  final int mfrcode; // (13) I16
+  final String description; // (20)
+  final String tokenDec; // (30)
+  final String tokenHex; // (31)
+
+  const PrismMeterTestToken({
+    required this.drn,
+    required this.pan,
+    required this.tokenClass,
+    required this.subclass,
+    required this.control,
+    required this.mfrcode,
+    required this.description,
+    required this.tokenDec,
+    required this.tokenHex,
+  });
+
+  static PrismMeterTestToken readFrom(BinaryReader r) {
+    String drn = '';
+    String pan = '';
+    int tokenClass = 0;
+    int subclass = 0;
+    int control = 0;
+    int mfrcode = 0;
+    String description = '';
+    String tokenDec = '';
+    String tokenHex = '';
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      switch (id) {
+        case 1:
+          if (type == TType.string) {
+            drn = r.readString();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 2:
+          if (type == TType.string) {
+            pan = r.readString();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 10:
+          if (type == TType.i16) {
+            tokenClass = r.readI16();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 11:
+          if (type == TType.i16) {
+            subclass = r.readI16();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 12:
+          if (type == TType.i64) {
+            control = r.readI64();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 13:
+          if (type == TType.i16) {
+            mfrcode = r.readI16();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 20:
+          if (type == TType.string) {
+            description = r.readString();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 30:
+          if (type == TType.string) {
+            tokenDec = r.readString();
+          } else {
+            r.skip(type);
+          }
+          break;
+        case 31:
+          if (type == TType.string) {
+            tokenHex = r.readString();
+          } else {
+            r.skip(type);
+          }
+          break;
+        default:
+          r.skip(type);
+      }
+    }
+    return PrismMeterTestToken(
+      drn: drn,
+      pan: pan,
+      tokenClass: tokenClass,
+      subclass: subclass,
+      control: control,
+      mfrcode: mfrcode,
+      description: description,
+      tokenDec: tokenDec,
+      tokenHex: tokenHex,
+    );
+  }
+}
+
 // ---- Client ---------------------------------------------------------
 
 /// Stateful Prism TokenApi client. One instance per concurrent
@@ -640,6 +767,134 @@ class TokenApiClient {
       throw const TApplicationException(
         TApplicationException.missingResult,
         'issueKeyChangeTokens: success field missing',
+      );
+    }
+    return success;
+  }
+
+  // -- issueMseToken ------------------------------------------------
+
+  /// Issue a Class 2 Management/Secondary-Engineering token
+  /// (ClearCredit, ClearTamper, SetMaximumPowerLimit, SetTariffRate,
+  /// SetFlag, …). Wire shape is identical to `issueCreditToken`;
+  /// the [subclass] discriminates the operation per
+  /// `PrismHSMConnector.MseToken`. [transferAmount] carries
+  /// numeric payload (e.g. max-power kW for SetMaximumPowerLimit,
+  /// flag-encoded value for SetFlag) — pass `0` for ops that don't
+  /// need one (e.g. ClearCredit, ClearTamper).
+  Future<List<PrismToken>> issueMseToken({
+    required String messageId,
+    required String accessToken,
+    required MeterConfigIn meterConfig,
+    required int subclass,
+    required double transferAmount,
+    required int tokenTime,
+    int flags = TokenIssueFlags.externalClock,
+  }) async {
+    final w = BinaryWriter();
+    final seq = ++_seq;
+    w.writeMessageBegin(TMessage('issueMseToken', TMessageType.call, seq));
+    w.writeFieldBegin(TType.string, 1);
+    w.writeString(messageId);
+    w.writeFieldBegin(TType.string, 2);
+    w.writeString(accessToken);
+    w.writeFieldBegin(TType.struct, 3);
+    meterConfig.writeTo(w);
+    w.writeFieldBegin(TType.i16, 4);
+    w.writeI16(subclass);
+    w.writeFieldBegin(TType.double_, 5);
+    w.writeDouble(transferAmount);
+    w.writeFieldBegin(TType.i64, 6);
+    w.writeI64(tokenTime);
+    w.writeFieldBegin(TType.i64, 7);
+    w.writeI64(flags);
+    w.writeFieldStop();
+    await _t.writeFrame(w.takeBytes());
+
+    final r = await _readReplyStruct('issueMseToken', seq);
+    List<PrismToken>? success;
+    PrismApiException? ex;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 0 && type == TType.list) {
+        final (elemType, n) = r.readListBegin();
+        if (elemType != TType.struct) {
+          throw TProtocolException(
+            'issueMseToken: expected list<struct>, got elem $elemType',
+          );
+        }
+        success = <PrismToken>[
+          for (var i = 0; i < n; i++) PrismToken.readFrom(r),
+        ];
+      } else if (id == 1 && type == TType.struct) {
+        ex = PrismApiException.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    if (ex != null) throw ex;
+    if (success == null) {
+      throw const TApplicationException(
+        TApplicationException.missingResult,
+        'issueMseToken: success field missing',
+      );
+    }
+    return success;
+  }
+
+  // -- issueMeterTestToken ------------------------------------------
+
+  /// Issue a Class 1 / 3 Non-Meter-Specific Engineering (NMSE) test
+  /// token. The token is independent of any meter's keys — it carries
+  /// a [control] word identifying which display/test routine the meter
+  /// should run, gated by the manufacturer code [mfrcode].
+  ///
+  /// Returns a single [PrismMeterTestToken] (not a list).
+  Future<PrismMeterTestToken> issueMeterTestToken({
+    required String messageId,
+    required String accessToken,
+    required int subclass,
+    required int control,
+    required int mfrcode,
+  }) async {
+    final w = BinaryWriter();
+    final seq = ++_seq;
+    w.writeMessageBegin(
+      TMessage('issueMeterTestToken', TMessageType.call, seq),
+    );
+    w.writeFieldBegin(TType.string, 1);
+    w.writeString(messageId);
+    w.writeFieldBegin(TType.string, 2);
+    w.writeString(accessToken);
+    w.writeFieldBegin(TType.i16, 3);
+    w.writeI16(subclass);
+    w.writeFieldBegin(TType.i64, 4);
+    w.writeI64(control);
+    w.writeFieldBegin(TType.i16, 5);
+    w.writeI16(mfrcode);
+    w.writeFieldStop();
+    await _t.writeFrame(w.takeBytes());
+
+    final r = await _readReplyStruct('issueMeterTestToken', seq);
+    PrismMeterTestToken? success;
+    PrismApiException? ex;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 0 && type == TType.struct) {
+        success = PrismMeterTestToken.readFrom(r);
+      } else if (id == 1 && type == TType.struct) {
+        ex = PrismApiException.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    if (ex != null) throw ex;
+    if (success == null) {
+      throw const TApplicationException(
+        TApplicationException.missingResult,
+        'issueMeterTestToken: success field missing',
       );
     }
     return success;

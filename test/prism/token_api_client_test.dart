@@ -538,58 +538,63 @@ void main() {
       expect(res, 'pong:hello');
     });
 
-    test('getStatus decodes a list of NodeStatus with info map + alerts',
-        () async {
-      final server = await _FakeThriftServer.bind({
-        'getStatus': (call, args) {
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('getStatus', TMessageType.reply, call.seqId),
-          );
-          w.writeFieldBegin(TType.list, 0);
-          w.writeListBegin(TType.struct, 2);
+    test(
+      'getStatus decodes a list of NodeStatus with info map + alerts',
+      () async {
+        final server = await _FakeThriftServer.bind({
+          'getStatus': (call, args) {
+            final w = BinaryWriter();
+            w.writeMessageBegin(
+              TMessage('getStatus', TMessageType.reply, call.seqId),
+            );
+            w.writeFieldBegin(TType.list, 0);
+            w.writeListBegin(TType.struct, 2);
 
-          // Node 0: 2-entry info, 1 alert.
-          w.writeFieldBegin(TType.map, 1);
-          w.writeMapBegin(TType.string, TType.string, 2);
-          w.writeString('host');
-          w.writeString('prism-0');
-          w.writeString('version');
-          w.writeString('2.5.1');
-          w.writeFieldBegin(TType.list, 2);
-          w.writeListBegin(TType.struct, 1);
-          w.writeFieldBegin(TType.string, 1);
-          w.writeString('LOW_DISK');
-          w.writeFieldBegin(TType.string, 2);
-          w.writeString('Disk usage above 80%');
-          w.writeFieldStop();
-          w.writeFieldStop(); // end NodeStatus 0
+            // Node 0: 2-entry info, 1 alert.
+            w.writeFieldBegin(TType.map, 1);
+            w.writeMapBegin(TType.string, TType.string, 2);
+            w.writeString('host');
+            w.writeString('prism-0');
+            w.writeString('version');
+            w.writeString('2.5.1');
+            w.writeFieldBegin(TType.list, 2);
+            w.writeListBegin(TType.struct, 1);
+            w.writeFieldBegin(TType.string, 1);
+            w.writeString('LOW_DISK');
+            w.writeFieldBegin(TType.string, 2);
+            w.writeString('Disk usage above 80%');
+            w.writeFieldStop();
+            w.writeFieldStop(); // end NodeStatus 0
 
-          // Node 1: empty info, no alerts.
-          w.writeFieldBegin(TType.map, 1);
-          w.writeMapBegin(TType.string, TType.string, 0);
-          w.writeFieldBegin(TType.list, 2);
-          w.writeListBegin(TType.struct, 0);
-          w.writeFieldStop(); // end NodeStatus 1
+            // Node 1: empty info, no alerts.
+            w.writeFieldBegin(TType.map, 1);
+            w.writeMapBegin(TType.string, TType.string, 0);
+            w.writeFieldBegin(TType.list, 2);
+            w.writeListBegin(TType.struct, 0);
+            w.writeFieldStop(); // end NodeStatus 1
 
-          w.writeFieldStop(); // end getStatus_result
-          return w.takeBytes();
-        },
-      });
-      addTearDown(server.close);
+            w.writeFieldStop(); // end getStatus_result
+            return w.takeBytes();
+          },
+        });
+        addTearDown(server.close);
 
-      final client = await TokenApiClient.connect(server.socketFactory);
-      addTearDown(client.close);
+        final client = await TokenApiClient.connect(server.socketFactory);
+        addTearDown(client.close);
 
-      final nodes = await client.getStatus(messageId: 'r', accessToken: 'jwt');
-      expect(nodes, hasLength(2));
-      expect(nodes[0].info, {'host': 'prism-0', 'version': '2.5.1'});
-      expect(nodes[0].alerts, hasLength(1));
-      expect(nodes[0].alerts.first.eCode, 'LOW_DISK');
-      expect(nodes[0].alerts.first.eMsgEn, 'Disk usage above 80%');
-      expect(nodes[1].info, isEmpty);
-      expect(nodes[1].alerts, isEmpty);
-    });
+        final nodes = await client.getStatus(
+          messageId: 'r',
+          accessToken: 'jwt',
+        );
+        expect(nodes, hasLength(2));
+        expect(nodes[0].info, {'host': 'prism-0', 'version': '2.5.1'});
+        expect(nodes[0].alerts, hasLength(1));
+        expect(nodes[0].alerts.first.eCode, 'LOW_DISK');
+        expect(nodes[0].alerts.first.eMsgEn, 'Disk usage above 80%');
+        expect(nodes[1].info, isEmpty);
+        expect(nodes[1].alerts, isEmpty);
+      },
+    );
 
     test('fetchTokenResult replays a prior issue\'s tokens', () async {
       final server = await _FakeThriftServer.bind({
@@ -625,6 +630,147 @@ void main() {
       expect(tokens.first.description, 'Credit:Electricity');
       expect(tokens.first.scaledAmount, '12.34');
       expect(tokens.first.tokenDec, '12345678901234567890');
+    });
+
+    test('issueMseToken returns a Class 2 ClearCredit token', () async {
+      final server = await _FakeThriftServer.bind({
+        'issueMseToken': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueMseToken', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 1);
+          w.writeFieldBegin(TType.i16, 10); // tokenClass
+          w.writeI16(2);
+          w.writeFieldBegin(TType.i16, 11); // subclass = ClearCredit (1)
+          w.writeI16(1);
+          w.writeFieldBegin(TType.string, 20);
+          w.writeString('Mse:ClearCredit');
+          w.writeFieldBegin(TType.string, 30);
+          w.writeString('99999999999999999999');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      final tokens = await client.issueMseToken(
+        messageId: 'r',
+        accessToken: 'jwt',
+        meterConfig: const MeterConfigIn(
+          drn: '56000000001',
+          ea: 7,
+          tct: 1,
+          sgc: 123456,
+          krn: 1,
+          ti: 1,
+          ken: 0,
+        ),
+        subclass: 1, // ClearCredit
+        transferAmount: 0,
+        tokenTime: 1700000000,
+      );
+
+      expect(tokens, hasLength(1));
+      expect(tokens.first.tokenClass, 2);
+      expect(tokens.first.subclass, 1);
+      expect(tokens.first.description, 'Mse:ClearCredit');
+      expect(tokens.first.tokenDec, '99999999999999999999');
+    });
+
+    test('issueMeterTestToken returns a single MeterTestToken', () async {
+      final server = await _FakeThriftServer.bind({
+        'issueMeterTestToken': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueMeterTestToken', TMessageType.reply, call.seqId),
+          );
+          // Result struct: success at field 0 = STRUCT MeterTestToken.
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.string, 1); // drn
+          w.writeString('56000000001');
+          w.writeFieldBegin(TType.string, 2); // pan
+          w.writeString('PAN-1');
+          w.writeFieldBegin(TType.i16, 10); // tokenClass
+          w.writeI16(1);
+          w.writeFieldBegin(TType.i16, 11); // subclass
+          w.writeI16(0);
+          w.writeFieldBegin(TType.i64, 12); // control
+          w.writeI64(7); // DisplayMeterPowerLimit
+          w.writeFieldBegin(TType.i16, 13); // mfrcode
+          w.writeI16(11);
+          w.writeFieldBegin(TType.string, 20); // description
+          w.writeString('Test:DisplayMeterPowerLimit');
+          w.writeFieldBegin(TType.string, 30); // tokenDec
+          w.writeString('44444444444444444444');
+          w.writeFieldBegin(TType.string, 31); // tokenHex
+          w.writeString('DEADBEEF');
+          w.writeFieldStop(); // end MeterTestToken
+          w.writeFieldStop(); // end result
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      final mtt = await client.issueMeterTestToken(
+        messageId: 'r',
+        accessToken: 'jwt',
+        subclass: 0,
+        control: 7,
+        mfrcode: 11,
+      );
+
+      expect(mtt.drn, '56000000001');
+      expect(mtt.pan, 'PAN-1');
+      expect(mtt.tokenClass, 1);
+      expect(mtt.subclass, 0);
+      expect(mtt.control, 7);
+      expect(mtt.mfrcode, 11);
+      expect(mtt.description, 'Test:DisplayMeterPowerLimit');
+      expect(mtt.tokenDec, '44444444444444444444');
+      expect(mtt.tokenHex, 'DEADBEEF');
+    });
+
+    test('issueMeterTestToken surfaces ApiException', () async {
+      final server = await _FakeThriftServer.bind({
+        'issueMeterTestToken': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueMeterTestToken', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.struct, 1); // ex1
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('BAD_MFR');
+          w.writeFieldBegin(TType.string, 2);
+          w.writeString('Manufacturer code 99 is not registered');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      await expectLater(
+        client.issueMeterTestToken(
+          messageId: 'r',
+          accessToken: 'jwt',
+          subclass: 0,
+          control: 7,
+          mfrcode: 99,
+        ),
+        throwsA(isA<PrismApiException>()),
+      );
     });
   });
 }
