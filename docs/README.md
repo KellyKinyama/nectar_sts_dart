@@ -33,6 +33,11 @@ vending key `abababababababab`.
 
 ## Reference appendix
 
+- [Using `VirtualMeter` — operator's guide](./using-the-virtual-meter.md) —
+  practical Q&A for provisioning meters, applying tokens, decoder-key
+  rotation, security caveats, and what it takes to decode *real* STS
+  tokens (spoiler: the vending key — which you almost certainly
+  don't have).
 - [STS compliance vector reference](./sts_compliance.md) — indexed
   reference for every CTSA vector ported into
   [test/sts_compliance_test.dart](../test/sts_compliance_test.dart),
