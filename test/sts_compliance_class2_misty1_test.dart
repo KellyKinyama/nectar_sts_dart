@@ -18,7 +18,10 @@
 //         vectors (matches the CTSA02 STA pattern).
 //
 // Also intentionally omitted from this batch:
-//   * CTSA10_04 (Class 1) — Dart Class 1 encrypts, Java does not.
+//   * CTSA10_04 (Class 1) — not yet transcribed. The Class 1 path
+//     itself is correct under STA (see CTSA02 in
+//     sts_compliance_class2_test.dart); only the MISTY1 Class 1
+//     vector ports remain.
 //   * CTSA16_04 (exception path) — Dart exception types differ.
 //   * CTSA19_04 (mixed scenarios) — deferred.
 import 'dart:typed_data';

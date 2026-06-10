@@ -33,9 +33,12 @@ vending key `abababababababab`.
 
 ## Reference appendix
 
-- [STS compliance vector reference](./sts_compliance.md) — concise
-  tabular reference for the three CTSA01 / standalone test vectors
-  ported into [test/sts_compliance_test.dart](../test/sts_compliance_test.dart).
+- [STS compliance vector reference](./sts_compliance.md) — indexed
+  reference for every CTSA vector ported into
+  [test/sts_compliance_test.dart](../test/sts_compliance_test.dart),
+  [test/sts_compliance_class2_test.dart](../test/sts_compliance_class2_test.dart),
+  and [test/sts_compliance_class2_misty1_test.dart](../test/sts_compliance_class2_misty1_test.dart)
+  (DKGA-02 + STA, DKGA-04 + MISTY1, Class 0 / 1 / 2).
 
 ## Conventions used in these documents
 
