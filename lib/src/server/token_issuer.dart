@@ -166,6 +166,23 @@ abstract class TokenIssuer {
       throw NotImplementedException(
         '$name does not support token-result replay.',
       );
+
+  /// Verify a 20-digit token against a meter configuration WITHOUT
+  /// throwing on invalid. Returns the raw
+  /// `{validationResult, isValid, token?}` payload the underlying
+  /// backend produced so the caller can branch on the precise
+  /// validation status (e.g. `"Valid"`, `"Expired"`, `"InvalidCRC"`)
+  /// rather than just success / failure. The optional `token` entry
+  /// is the decoded `{tokenNo, subclass, description, scaledAmount}`
+  /// shape when the backend chose to return it.
+  FutureOr<Map<String, Object?>> verifyToken(
+    String requestId,
+    String tokenNo,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support token verification.',
+      );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -253,6 +270,16 @@ class VirtualHsmIssuer implements TokenIssuer {
   ) =>
       throw NotImplementedException(
         '$name does not support token-result replay.',
+      );
+
+  @override
+  Future<Map<String, Object?>> verifyToken(
+    String requestId,
+    String tokenNo,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support token verification.',
       );
 }
 
@@ -661,6 +688,44 @@ class PrismIssuer implements TokenIssuer {
             'scaledAmount': t.scaledAmount,
           },
       ];
+    } finally {
+      await client.close();
+    }
+  }
+
+  @override
+  Future<Map<String, Object?>> verifyToken(
+    String requestId,
+    String tokenNo,
+    Map<String, dynamic> params,
+  ) async {
+    final meterConfig = _meterConfigFromParams(params);
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      final result = await client.verifyToken(
+        messageId: requestId,
+        accessToken: accessToken,
+        meterConfig: meterConfig,
+        tokenDec: tokenNo,
+      );
+      final t = result.token;
+      return {
+        'validationResult': result.validationResult,
+        'isValid': result.isValid,
+        if (t != null)
+          'token': {
+            'tokenNo': t.tokenDec,
+            'subclass': t.subclass,
+            'description': t.description,
+            'scaledAmount': t.scaledAmount,
+          },
+      };
     } finally {
       await client.close();
     }

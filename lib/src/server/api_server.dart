@@ -48,6 +48,21 @@
 ///                                    Returns the same `{tokenNo, subclass,
 ///                                    description, scaledAmount}` shape as
 ///                                    the issue endpoints.
+///   POST /v1/tokens/{tokenNo}/verify
+///                                  — non-throwing token validation. Body is
+///                                    the standard VirtualHsmParams shape
+///                                    (meter context). Always 200 on a
+///                                    completed verify; the result is in
+///                                    `data.validationResult` (`"Valid"`,
+///                                    `"Expired"`, `"InvalidCRC"`, …) and
+///                                    `data.isValid` (bool). When the backend
+///                                    chose to return the decoded token, it
+///                                    is in `data.token` (same flat shape as
+///                                    the issue endpoints). Use this when the
+///                                    caller wants to branch on the specific
+///                                    validation status rather than
+///                                    success / failure (`POST /v1/tokens/{tokenNo}`
+///                                    instead throws on invalid).
 ///   GET  /healthz                  — liveness probe.
 ///   GET  /v1/health/backend        — issuer-backend probe (ping the
 ///                                    Prism HSM / VirtualHsm). 200 when
@@ -174,6 +189,11 @@ Handler buildApiHandler(
       '/v1/tokens/results/<originalRequestId>',
       (Request r, String originalRequestId) =>
           _fetchTokenResultHandler(r, issuer, originalRequestId),
+    )
+    ..post(
+      '/v1/tokens/<tokenNo>/verify',
+      (Request r, String tokenNo) =>
+          _verifyHandler(r, issuer, tokenNo, registry),
     )
     ..get(
       '/v1/tokens/<tokenNo>',
@@ -492,10 +512,32 @@ Future<Response> _fetchTokenResultHandler(
       code: 200,
       message: 'Token result fetched',
       requestId: requestId,
-      data: {
-        'original_request_id': originalRequestId,
-        'tokens': tokens,
-      },
+      data: {'original_request_id': originalRequestId, 'tokens': tokens},
+    ),
+  );
+}
+
+Future<Response> _verifyHandler(
+  Request request,
+  TokenIssuer issuer,
+  String tokenNo,
+  MeterStore? registry,
+) async {
+  final requestId = _newRequestId();
+  if (tokenNo.isEmpty) {
+    throw const _BadRequest('Path segment "tokenNo" is required');
+  }
+  final body = await _readJsonBody(request);
+  _rejectSensitiveParams(body);
+  final params = (await _resolveMeterSerial(body, registry)).params;
+  final result = await issuer.verifyToken(requestId, tokenNo, params);
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Token verified',
+      requestId: requestId,
+      data: {'tokenNo': tokenNo, ...result},
     ),
   );
 }

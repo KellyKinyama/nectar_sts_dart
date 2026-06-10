@@ -78,6 +78,14 @@ class _UnhealthyIssuer implements TokenIssuer {
     String originalRequestId,
   ) =>
       throw UnimplementedError();
+
+  @override
+  Future<Map<String, Object?>> verifyToken(
+    String requestId,
+    String tokenNo,
+    Map<String, dynamic> params,
+  ) =>
+      throw UnimplementedError();
 }
 
 Map<String, dynamic> _baseParams() => {
@@ -317,6 +325,23 @@ void main() {
         expect(
           ((r['body'] as Map)['status'] as Map)['message'],
           contains('token-result replay'),
+        );
+      },
+    );
+
+    test(
+      'POST /v1/tokens/<tokenNo>/verify -> 501 NotImplemented for VirtualHsm',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(
+          handler,
+          '/v1/tokens/12345678901234567890/verify',
+          _baseParams(),
+        );
+        expect(r['status'], 501);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          contains('token verification'),
         );
       },
     );
