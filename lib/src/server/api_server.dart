@@ -155,7 +155,7 @@ Future<Response> _generateHandler(
     }
   }
 
-  final token = issuer.generateToken(requestId, params);
+  final token = await issuer.generateToken(requestId, params);
 
   if (log != null) {
     await log.record(
@@ -188,7 +188,7 @@ Future<Response> _decodeHandler(
   final rawBody = await _readJsonBody(request);
   _rejectSensitiveParams(rawBody);
   final params = (await _resolveMeterSerial(rawBody, registry)).params;
-  final decoded = issuer.decodeToken(requestId, tokenNo, params);
+  final decoded = await issuer.decodeToken(requestId, tokenNo, params);
 
   return _json(
     200,

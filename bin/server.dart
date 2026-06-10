@@ -65,8 +65,8 @@ Future<void> main(List<String> args) async {
   final keyHex = (env['VENDING_KEY_HEX'] ?? _defaultVendingKeyHex).trim();
   final bearer = env['NECTAR_API_TOKEN'];
   final logPath = (env['VENDING_LOG_FILE'] ?? _defaultLogPath).trim();
-  final registryPath =
-      (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath).trim();
+  final registryPath = (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath)
+      .trim();
 
   if (keyHex == _defaultVendingKeyHex) {
     stderr.writeln(
@@ -234,19 +234,22 @@ TokenIssuer _buildIssuer(Map<String, String> env, VirtualHsm fallback) {
         throw StateError('PRISM_PORT must be an integer, got: $portStr');
       }
       stderr.writeln(
-        '[warn] HSM_KIND=prism — PrismIssuer is currently a stub; every '
-        '/v1/tokens request will fail until the Thrift client is wired.',
+        '[info] HSM_KIND=prism — connecting to $host:$port (realm=$realm, '
+        'insecureTls=${(env['PRISM_INSECURE_TLS'] ?? 'true')}). '
+        'Only class 0 / subclass 0 (electricity credit) is wired today.',
       );
-      return PrismIssuer(PrismConfig(
-        host: host,
-        port: port,
-        realm: realm,
-        username: username,
-        password: password,
-        insecureTls:
-            (env['PRISM_INSECURE_TLS'] ?? 'true').trim().toLowerCase() !=
-                'false',
-      ));
+      return PrismIssuer(
+        PrismConfig(
+          host: host,
+          port: port,
+          realm: realm,
+          username: username,
+          password: password,
+          insecureTls:
+              (env['PRISM_INSECURE_TLS'] ?? 'true').trim().toLowerCase() !=
+              'false',
+        ),
+      );
     default:
       throw StateError(
         'Unknown HSM_KIND="$kind" — expected "virtual" or "prism".',

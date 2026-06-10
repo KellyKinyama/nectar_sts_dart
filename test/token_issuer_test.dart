@@ -4,13 +4,15 @@ import 'package:test/test.dart';
 
 void main() {
   group('PrismIssuer', () {
-    final issuer = PrismIssuer(const PrismConfig(
-      host: '10.0.0.1',
-      port: 9000,
-      realm: 'utility',
-      username: 'vending',
-      password: 'pw',
-    ));
+    final issuer = PrismIssuer(
+      const PrismConfig(
+        host: '10.0.0.1',
+        port: 9000,
+        realm: 'utility',
+        username: 'vending',
+        password: 'pw',
+      ),
+    );
 
     test('name advertises host:port', () {
       expect(issuer.name, 'PrismIssuer(10.0.0.1:9000)');

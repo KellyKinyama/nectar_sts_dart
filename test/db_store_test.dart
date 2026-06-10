@@ -113,28 +113,27 @@ Future<void> _linkVendingKey(
 }
 
 TokenIssuer _hsm() => VirtualHsmIssuer(
-      VirtualHsm(
-        VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
-      ),
-    );
+  VirtualHsm(
+    VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+  ),
+);
 
 RegisteredMeter _testMeter({
   String serial = _testSerial,
   String iain = _testIain,
-}) =>
-    RegisteredMeter(
-      serial: serial,
-      identity: MeterIdentity(
-        issuerIdentificationNumber: _testIin,
-        individualAccountIdentificationNumber: iain,
-        keyType: 2,
-        supplyGroupCode: _testSgc,
-        tariffIndex: '07',
-        keyRevisionNumber: 1,
-      ),
-      subscriberLabel: 'DB Integration Test',
-      registeredAt: DateTime.now().toUtc(),
-    );
+}) => RegisteredMeter(
+  serial: serial,
+  identity: MeterIdentity(
+    issuerIdentificationNumber: _testIin,
+    individualAccountIdentificationNumber: iain,
+    keyType: 2,
+    supplyGroupCode: _testSgc,
+    tariffIndex: '07',
+    keyRevisionNumber: 1,
+  ),
+  subscriberLabel: 'DB Integration Test',
+  registeredAt: DateTime.now().toUtc(),
+);
 
 Future<Map<String, dynamic>> _post(
   Handler handler,
@@ -170,7 +169,7 @@ void main() {
   final skipReason = dbConfigured
       ? null
       : 'STS_DB_HOST is not set — skipping DB-backed integration tests. '
-          'See test/db_store_test.dart for the env vars to set.';
+            'See test/db_store_test.dart for the env vars to set.';
 
   group('DB-backed stores (MySQL `sts_vending`)', () {
     late Connection db;
@@ -258,8 +257,7 @@ void main() {
 
     // ---- DbVendingLog -------------------------------------------
 
-    test(
-        'record without a vending_key_id link throws '
+    test('record without a vending_key_id link throws '
         'DbVendingLogPersistenceException', () async {
       final reg = DbMeterRegistry();
       final log = DbVendingLog();
@@ -402,8 +400,7 @@ void main() {
 
     // ---- End-to-end through buildApiHandler ---------------------
 
-    test(
-        'HTTP: POST /v1/meters then POST /v1/tokens end-to-end via '
+    test('HTTP: POST /v1/meters then POST /v1/tokens end-to-end via '
         'buildApiHandler', () async {
       final reg = DbMeterRegistry();
       final log = DbVendingLog();
@@ -502,8 +499,8 @@ void main() {
         },
       });
       expect(create['status'], 412, reason: '${create['body']}');
-      final msg =
-          ((create['body'] as Map)['status'] as Map)['message'].toString();
+      final msg = ((create['body'] as Map)['status'] as Map)['message']
+          .toString();
       expect(msg, contains('supply_groups'));
     });
 

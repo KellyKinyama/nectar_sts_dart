@@ -1,29 +1,32 @@
 /// Server-boundary abstraction over "something that turns a
 /// flat-Map token request into an issued [Token]".
 ///
-/// The Dart port has historically wired the HTTP layer directly to
-/// `VirtualHsm` (in-process key derivation + cipher). This interface
-/// exists so a future Prism HSM client can be dropped in beside the
-/// virtual implementation without touching the shelf handler.
-///
 /// Two implementations:
 ///
 ///   - [VirtualHsmIssuer] — wraps a [VirtualHsm]. Key derivation
 ///     (DKGA-02/04) and token encryption both run in this Dart
 ///     process. Vending key lives in plain memory.
-///   - [PrismIssuer] — placeholder for the real Prism HSM. The
-///     upstream `tokens-service` Java code talks to Prism over
-///     Apache Thrift (`PrismClientFacade` → `PrismHSMConnector`):
-///     it never derives keys client-side; `issueCreditToken` /
-///     `issueKeyChangeTokens` Thrift RPCs return fully-formed
-///     encrypted tokens. Porting that requires a Dart Thrift client
-///     for Prism's IDL — OUT OF SCOPE for this repository today, so
-///     every method throws [NotImplementedException].
+///   - [PrismIssuer] — talks to a remote Prism HSM over Apache
+///     Thrift (binary protocol + framed transport over TLS),
+///     mirroring the upstream Java `PrismClientFacade`. Today only
+///     class 0 / subclass 0 (`TransferElectricityCreditToken`) is
+///     wired through to a Prism `issueCreditToken` call; everything
+///     else throws [NotImplementedException].
 library;
 
+import 'dart:async';
+
+import '../base/bit_string.dart';
+import '../domain/amount.dart';
+import '../domain/base_date.dart';
+import '../domain/token_identifier.dart';
+import '../encryption/encryption_algorithm.dart';
 import '../exceptions/exceptions.dart';
 import '../hsm/hsm.dart';
 import '../hsm/virtual_hsm_dispatch.dart';
+import '../prism/thrift_framed_transport.dart';
+import '../prism/token_api_client.dart' as prism;
+import '../token/class0_tokens.dart';
 import '../token/token.dart';
 
 /// Anything that can mint and decode tokens for the HTTP API.
@@ -37,11 +40,14 @@ abstract class TokenIssuer {
 
   /// Issue a token from a flat param map. Returns the issued
   /// [Token] with `tokenNo` populated.
-  Token generateToken(String requestId, Map<String, dynamic> params);
+  FutureOr<Token> generateToken(
+    String requestId,
+    Map<String, dynamic> params,
+  );
 
   /// Decode a previously-issued 20-digit token using the same
   /// params that were used to mint it.
-  Token decodeToken(
+  FutureOr<Token> decodeToken(
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
@@ -89,6 +95,11 @@ class PrismConfig {
   /// trust store is wired.
   final bool insecureTls;
 
+  /// Per-call timeout for the TLS connect. `null` means "use OS
+  /// default" (effectively unbounded, matching the Java reference
+  /// which sets `socket.setSoTimeout(0)`).
+  final Duration? connectTimeout;
+
   const PrismConfig({
     required this.host,
     required this.port,
@@ -96,44 +107,225 @@ class PrismConfig {
     required this.username,
     required this.password,
     this.insecureTls = true,
+    this.connectTimeout,
   });
 }
 
-/// Stub Prism-HSM-backed issuer. The real implementation needs a
-/// Dart Thrift client speaking Prism's `TokenApi` IDL — see
-/// `c:\www\java\tokens-service\src\main\java\ke\co\nectar\hsm\prism\`
-/// for the reference Java implementation.
+/// Prism-HSM-backed issuer.
 ///
-/// Until that lands, every method throws [NotImplementedException]
-/// so a `HSM_KIND=prism` deployment fails loudly instead of silently
-/// degrading to the virtual HSM.
+/// One TLS connection per request — matches the Java reference which
+/// re-authenticates per call. If profiling shows that hurts, we can
+/// move to a connection pool later.
 class PrismIssuer implements TokenIssuer {
   final PrismConfig config;
 
-  PrismIssuer(this.config);
+  final SocketFactory? _socketFactoryOverride;
+
+  PrismIssuer(this.config) : _socketFactoryOverride = null;
+
+  /// Test-only ctor: inject an in-process plain-TCP factory so the
+  /// fake Thrift server in `test/prism/` doesn't need certificates.
+  PrismIssuer.forTesting(this.config, SocketFactory socketFactory)
+      : _socketFactoryOverride = socketFactory;
 
   @override
   String get name => 'PrismIssuer(${config.host}:${config.port})';
 
-  Never _stub(String method) {
-    throw NotImplementedException(
-      'PrismIssuer.$method is a stub. A real Prism HSM integration '
-      'requires a Dart Thrift client for Prism\'s TokenApi IDL '
-      '(issueCreditToken / issueKeyChangeTokens / decodeToken). '
-      'See the upstream Java reference at '
-      'ke.co.nectar.hsm.prism.impl.PrismClientFacade.',
-    );
+  SocketFactory get _factory =>
+      _socketFactoryOverride ??
+      tlsSocketFactory(
+        host: config.host,
+        port: config.port,
+        insecureTls: config.insecureTls,
+        timeout: config.connectTimeout,
+      );
+
+  @override
+  Future<Token> generateToken(
+    String requestId,
+    Map<String, dynamic> params,
+  ) async {
+    final tokenClass = params[VirtualHsmParams.tokenClass]?.toString();
+    final subclass = params[VirtualHsmParams.tokenSubclass]?.toString() ?? '0';
+    if (tokenClass != '0' || subclass != '0') {
+      throw NotImplementedException(
+        'PrismIssuer.generateToken: only class 0 / subclass 0 '
+        '(electricity credit) is wired through to Prism today. '
+        'Got class=$tokenClass subclass=$subclass.',
+      );
+    }
+
+    final meterConfig = _meterConfigFromParams(params);
+    final amountKwh = _requiredDouble(params, VirtualHsmParams.amount);
+    final tokenTime = _tokenTimeSeconds(params);
+
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+
+      // Prism expects scaled units: ×10 for kWh credit subclass 0.
+      // Currency-credit variants (subclasses 4–7) would use ×100000
+      // but they're not wired here.
+      final scaled = amountKwh * 10;
+      final tokens = await client.issueCreditToken(
+        messageId: requestId,
+        accessToken: accessToken,
+        meterConfig: meterConfig,
+        subclass: 0,
+        transferAmount: scaled,
+        tokenTime: tokenTime,
+        flags: prism.TokenIssueFlags.externalClock,
+      );
+
+      final picked = _pickElectricityCredit(tokens);
+      return _toDartToken(requestId, picked, params);
+    } finally {
+      await client.close();
+    }
   }
 
   @override
-  Token generateToken(String requestId, Map<String, dynamic> params) =>
-      _stub('generateToken');
-
-  @override
-  Token decodeToken(
+  FutureOr<Token> decodeToken(
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) =>
-      _stub('decodeToken');
+  ) {
+    throw const NotImplementedException(
+      'PrismIssuer.decodeToken is not wired yet. Prism exposes '
+      'verifyToken for this; add it to TokenApiClient when needed.',
+    );
+  }
+
+  // ---- helpers ----------------------------------------------------
+
+  prism.MeterConfigIn _meterConfigFromParams(Map<String, dynamic> params) {
+    final drn = _requiredString(
+      params,
+      VirtualHsmParams.decoderReferenceNumber,
+    );
+    final eaCode = _eaCode(params);
+    final sgc = int.parse(
+      _requiredString(params, VirtualHsmParams.supplyGroupCode),
+    );
+    final krn = int.parse(
+      _requiredString(params, VirtualHsmParams.keyRevisionNo),
+    );
+    final ti = int.parse(_requiredString(params, VirtualHsmParams.tariffIndex));
+    final ken = int.tryParse(
+          (params[VirtualHsmParams.keyExpiryNumberHighOrder] ?? '0').toString(),
+        ) ??
+        0;
+    return prism.MeterConfigIn(
+      drn: drn,
+      ea: eaCode,
+      tct: 1, // NumericKeypad — same default as the Java facade.
+      sgc: sgc,
+      krn: krn,
+      ti: ti,
+      ken: ken,
+    );
+  }
+
+  int _eaCode(Map<String, dynamic> params) {
+    final raw = (params[VirtualHsmParams.encryptionAlgorithm] ?? 'sta')
+        .toString()
+        .toLowerCase();
+    switch (raw) {
+      case 'sta':
+        return int.parse(EncryptionAlgorithmCode.sta.name);
+      case 'dea':
+        return int.parse(EncryptionAlgorithmCode.dea.name);
+      case 'misty1':
+        return int.parse(EncryptionAlgorithmCode.misty1.name);
+      default:
+        throw NotImplementedException(
+          'PrismIssuer: unknown encryption_algorithm "$raw"',
+        );
+    }
+  }
+
+  /// Resolve `tokenTime` (epoch seconds). Honor `token_id` if the
+  /// request carries one; otherwise use now, matching the Java
+  /// facade's `Instant.now().getEpochSecond()`.
+  int _tokenTimeSeconds(Map<String, dynamic> params) {
+    final raw = params[VirtualHsmParams.tokenId];
+    DateTime when;
+    if (raw is DateTime) {
+      when = raw.toUtc();
+    } else if (raw is String && raw.isNotEmpty) {
+      when = DateTime.parse(raw).toUtc();
+    } else {
+      when = DateTime.now().toUtc();
+    }
+    return when.millisecondsSinceEpoch ~/ 1000;
+  }
+
+  prism.PrismToken _pickElectricityCredit(List<prism.PrismToken> tokens) {
+    for (final t in tokens) {
+      if (t.description == 'Credit:Electricity') return t;
+    }
+    if (tokens.isNotEmpty) return tokens.first;
+    throw const NotImplementedException(
+      'PrismIssuer: Prism returned no tokens for issueCreditToken',
+    );
+  }
+
+  Token _toDartToken(
+    String requestId,
+    prism.PrismToken pt,
+    Map<String, dynamic> params,
+  ) {
+    final out = TransferElectricityCreditToken(requestId);
+    out.encryptedTokenBitString = TokenTransposition.tokenNoToBinary66(
+      pt.tokenDec,
+    );
+    final scaled = double.tryParse(pt.scaledAmount);
+    if (scaled != null) {
+      out.amountPurchased = Amount(scaled);
+    }
+    final baseDate = _baseDate(params);
+    out.tokenIdentifier = TokenIdentifier.fromBitString(
+      BitString.fromValue(pt.tid & 0xFFFFFF, 24),
+      baseDate: baseDate,
+    );
+    return out;
+  }
+
+  BaseDate _baseDate(Map<String, dynamic> params) {
+    switch ((params[VirtualHsmParams.baseDate] ?? '1993').toString()) {
+      case '2014':
+      case '14':
+        return BaseDate.date2014;
+      case '2035':
+      case '35':
+        return BaseDate.date2035;
+      default:
+        return BaseDate.date1993;
+    }
+  }
+
+  static String _requiredString(Map<String, dynamic> params, String key) {
+    final v = params[key];
+    if (v == null) {
+      throw NotImplementedException('PrismIssuer: missing param "$key"');
+    }
+    return v.toString();
+  }
+
+  static double _requiredDouble(Map<String, dynamic> params, String key) {
+    final v = params[key];
+    if (v is num) return v.toDouble();
+    if (v is String) {
+      final parsed = double.tryParse(v);
+      if (parsed != null) return parsed;
+    }
+    throw NotImplementedException(
+      'PrismIssuer: param "$key" must be numeric, got: $v',
+    );
+  }
 }
