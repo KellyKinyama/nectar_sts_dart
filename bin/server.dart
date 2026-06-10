@@ -65,8 +65,8 @@ Future<void> main(List<String> args) async {
   final keyHex = (env['VENDING_KEY_HEX'] ?? _defaultVendingKeyHex).trim();
   final bearer = env['NECTAR_API_TOKEN'];
   final logPath = (env['VENDING_LOG_FILE'] ?? _defaultLogPath).trim();
-  final registryPath = (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath)
-      .trim();
+  final registryPath =
+      (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath).trim();
 
   if (keyHex == _defaultVendingKeyHex) {
     stderr.writeln(
@@ -82,6 +82,28 @@ Future<void> main(List<String> args) async {
   }
 
   final hsm = VirtualHsm(VendingCommonDesKey(parseHexKey(keyHex)));
+
+  final tariffs = TariffBook.fromEnv(env);
+  if (tariffs.isEmpty) {
+    stdout.writeln(
+      '[info] no tariff configured — requests must send "amount" '
+      '(kWh). Set TARIFF_PRICE_PER_KWH+TARIFF_CURRENCY (or '
+      'TARIFF_TABLE) to enable cash-amount requests.',
+    );
+  } else {
+    final fb = tariffs.fallback;
+    if (fb != null) {
+      stdout.writeln(
+        '[info] tariff fallback: ${fb.pricePerKwh} ${fb.currency}/kWh'
+        '${fb.adminFee == 0 ? '' : ' (+${fb.adminFee} ${fb.currency} admin fee)'}',
+      );
+    }
+    if (tariffs.byTariffIndex.isNotEmpty) {
+      stdout.writeln(
+        '[info] tariff table entries: ${tariffs.byTariffIndex.keys.join(", ")}',
+      );
+    }
+  }
 
   final useDb = Database.isConfigured;
   final VendingLogStore? log;
@@ -142,6 +164,7 @@ Future<void> main(List<String> args) async {
     bearerToken: bearer,
     log: log,
     registry: registry,
+    tariffs: tariffs.isEmpty ? null : tariffs,
   );
 
   final server = await shelf_io.serve(handler, host, port);

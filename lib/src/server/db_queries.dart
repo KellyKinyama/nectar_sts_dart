@@ -108,44 +108,44 @@ class MeterRow {
   });
 
   factory MeterRow.fromRow(Map<String, dynamic> r) => MeterRow(
-    id: (r['id'] as num).toInt(),
-    pan: r['pan'] as String,
-    iin: r['iin'] as String,
-    iain: r['iain'] as String,
-    decoderSerialNumber: r['decoder_serial_number'] as String?,
-    supplyGroupId: (r['supply_group_id'] as num).toInt(),
-    supplyGroupCode: r['sg_code'] as String,
-    vendingKeyId: (r['vending_key_id'] as num?)?.toInt(),
-    keyType: (r['vk_key_type'] as num?)?.toInt(),
-    tariffIndex: r['vk_tariff_index'] as String?,
-    keyRevisionNumber: (r['vk_key_revision_number'] as num?)?.toInt(),
-    keyExpiryNumber: (r['vk_key_expiry_number'] as num?)?.toInt(),
-    algorithm: r['vk_algorithm'] as String?,
-    encryptionAlgorithm: r['vk_encryption_algorithm'] as String?,
-    baseDate: (r['vk_base_date'] as num?)?.toInt(),
-    location: r['location'] as String?,
-    isActive: _asBool(r['is_active']),
-  );
+        id: (r['id'] as num).toInt(),
+        pan: r['pan'] as String,
+        iin: r['iin'] as String,
+        iain: r['iain'] as String,
+        decoderSerialNumber: r['decoder_serial_number'] as String?,
+        supplyGroupId: (r['supply_group_id'] as num).toInt(),
+        supplyGroupCode: r['sg_code'] as String,
+        vendingKeyId: (r['vending_key_id'] as num?)?.toInt(),
+        keyType: (r['vk_key_type'] as num?)?.toInt(),
+        tariffIndex: r['vk_tariff_index'] as String?,
+        keyRevisionNumber: (r['vk_key_revision_number'] as num?)?.toInt(),
+        keyExpiryNumber: (r['vk_key_expiry_number'] as num?)?.toInt(),
+        algorithm: r['vk_algorithm'] as String?,
+        encryptionAlgorithm: r['vk_encryption_algorithm'] as String?,
+        baseDate: (r['vk_base_date'] as num?)?.toInt(),
+        location: r['location'] as String?,
+        isActive: _asBool(r['is_active']),
+      );
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'pan': pan,
-    'iin': iin,
-    'iain': iain,
-    'decoder_serial_number': decoderSerialNumber,
-    'supply_group_id': supplyGroupId,
-    'supply_group_code': supplyGroupCode,
-    'vending_key_id': vendingKeyId,
-    'key_type': keyType,
-    'tariff_index': tariffIndex,
-    'key_revision_number': keyRevisionNumber,
-    'key_expiry_number': keyExpiryNumber,
-    'algorithm': algorithm,
-    'encryption_algorithm': encryptionAlgorithm,
-    'base_date': baseDate,
-    'location': location,
-    'is_active': isActive,
-  };
+        'id': id,
+        'pan': pan,
+        'iin': iin,
+        'iain': iain,
+        'decoder_serial_number': decoderSerialNumber,
+        'supply_group_id': supplyGroupId,
+        'supply_group_code': supplyGroupCode,
+        'vending_key_id': vendingKeyId,
+        'key_type': keyType,
+        'tariff_index': tariffIndex,
+        'key_revision_number': keyRevisionNumber,
+        'key_expiry_number': keyExpiryNumber,
+        'algorithm': algorithm,
+        'encryption_algorithm': encryptionAlgorithm,
+        'base_date': baseDate,
+        'location': location,
+        'is_active': isActive,
+      };
 }
 
 /// Returned by the vending-log queries. Subset of the `tokens` row
@@ -161,6 +161,7 @@ class IssuedTokenRow {
   final int? tokenSubClass;
   final String tokenKind;
   final double? amountKwh;
+  final String? currency;
   final DateTime issuedAt;
   final Map<String, dynamic>? engineResponse;
   final String status;
@@ -178,6 +179,7 @@ class IssuedTokenRow {
     this.vendingKeyId,
     this.tokenSubClass,
     this.amountKwh,
+    this.currency,
     this.engineResponse,
   });
 
@@ -212,6 +214,7 @@ class IssuedTokenRow {
       tokenSubClass: (r['token_sub_class'] as num?)?.toInt(),
       tokenKind: r['token_kind'] as String,
       amountKwh: _asDouble(r['amount_kwh']),
+      currency: r['currency'] as String?,
       issuedAt: _parseDate(r['issued_at']),
       engineResponse: engine,
       status: (r['status'] as String?) ?? 'issued',
@@ -225,20 +228,21 @@ class IssuedTokenRow {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'request_id': requestId,
-    'token_no': tokenNo,
-    'meter_id': meterId,
-    'meter_pan': meterPan,
-    'vending_key_id': vendingKeyId,
-    'token_class': tokenClass,
-    'token_sub_class': tokenSubClass,
-    'token_kind': tokenKind,
-    'amount_kwh': amountKwh,
-    'issued_at': issuedAt.toUtc().toIso8601String(),
-    'status': status,
-    if (engineResponse != null) 'engine_response': engineResponse,
-  };
+        'id': id,
+        'request_id': requestId,
+        'token_no': tokenNo,
+        'meter_id': meterId,
+        'meter_pan': meterPan,
+        'vending_key_id': vendingKeyId,
+        'token_class': tokenClass,
+        'token_sub_class': tokenSubClass,
+        'token_kind': tokenKind,
+        'amount_kwh': amountKwh,
+        if (currency != null) 'currency': currency,
+        'issued_at': issuedAt.toUtc().toIso8601String(),
+        'status': status,
+        if (engineResponse != null) 'engine_response': engineResponse,
+      };
 }
 
 /// Raised when the Laravel dashboard hasn't pre-provisioned the
@@ -274,10 +278,8 @@ class DbQueries {
   static Future<int?> findSupplyGroupIdByCode(String code) async {
     final db = await getDbConnection();
     try {
-      final row = await db
-          .table('supply_groups')
-          .where('code', '=', code)
-          .first();
+      final row =
+          await db.table('supply_groups').where('code', '=', code).first();
       if (row == null) return null;
       return (row['id'] as num).toInt();
     } finally {
@@ -502,9 +504,8 @@ class DbQueries {
           .table('tokens')
           .where('meter_id', '=', meterId)
           .whereRaw("JSON_EXTRACT(engine_response, '\$.tid_minutes') = ?", [
-            tidMinutes,
-          ])
-          .count();
+        tidMinutes,
+      ]).count();
       return n > 0;
     } finally {
       await Database.release(db);
@@ -534,10 +535,8 @@ class DbQueries {
       var q = _selectTokens(db);
       if (iin != null) q = q.where('meters.iin', '=', iin);
       if (iain != null) q = q.where('meters.iain', '=', iain);
-      final rows = await q
-          .orderBy('tokens.issued_at', 'desc')
-          .limit(limit)
-          .get();
+      final rows =
+          await q.orderBy('tokens.issued_at', 'desc').limit(limit).get();
       return rows
           .cast<Map<String, dynamic>>()
           .map(IssuedTokenRow.fromRow)
@@ -562,10 +561,12 @@ class DbQueries {
   /// public meter queries share the same projection so [MeterRow.fromRow]
   /// can be a single mapper.
   static QueryBuilder _selectMeters(Connection db) => db
-      .table('meters')
-      .join('supply_groups', 'supply_groups.id', '=', 'meters.supply_group_id')
-      .leftJoin('vending_keys', 'vending_keys.id', '=', 'meters.vending_key_id')
-      .select([
+          .table('meters')
+          .join('supply_groups', 'supply_groups.id', '=',
+              'meters.supply_group_id')
+          .leftJoin(
+              'vending_keys', 'vending_keys.id', '=', 'meters.vending_key_id')
+          .select([
         'meters.id',
         'meters.pan',
         'meters.iin',
@@ -586,9 +587,9 @@ class DbQueries {
       ]);
 
   static QueryBuilder _selectTokens(Connection db) => db
-      .table('tokens')
-      .leftJoin('meters', 'meters.id', '=', 'tokens.meter_id')
-      .select([
+          .table('tokens')
+          .leftJoin('meters', 'meters.id', '=', 'tokens.meter_id')
+          .select([
         'tokens.id',
         'tokens.request_id',
         'tokens.token_no',
@@ -598,6 +599,7 @@ class DbQueries {
         'tokens.token_sub_class',
         'tokens.token_kind',
         'tokens.amount_kwh',
+        'tokens.currency',
         'tokens.issued_at',
         // mysql_dart's binary protocol can't decode JSON (column
         // type 245) — cast to CHAR so it comes back as a string we

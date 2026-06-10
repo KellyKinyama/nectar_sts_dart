@@ -73,6 +73,7 @@ class DbVendingLog implements VendingLogStore {
       tokenSubClass: r.tokenSubclass,
       tokenKind: _tokenKindFor(r),
       amountKwh: r.amountKwh,
+      currency: r.currency,
       issuedAt: r.issuedAt,
       tidMinutes: r.tidMinutes,
       randomNo: r.randomNo,
@@ -178,34 +179,36 @@ class DbVendingLog implements VendingLogStore {
 
   /// What the dashboard renders as the "request payload" column.
   static Map<String, dynamic> _payloadJson(IssuedTokenRecord r) => {
-    'iin': r.iin,
-    'iain': r.iain,
-    'key_type': r.keyType,
-    'supply_group_code': r.supplyGroupCode,
-    'tariff_index': r.tariffIndex,
-    'key_revision_no': r.keyRevisionNumber,
-    'decoder_key_generation_algorithm': r.decoderKeyGenerationAlgorithm,
-    'token_class': r.tokenClass,
-    'token_subclass': r.tokenSubclass,
-    if (r.amountKwh != null) 'amount_kwh': r.amountKwh,
-    if (r.meterSerial != null) 'meter_serial': r.meterSerial,
-  };
+        'iin': r.iin,
+        'iain': r.iain,
+        'key_type': r.keyType,
+        'supply_group_code': r.supplyGroupCode,
+        'tariff_index': r.tariffIndex,
+        'key_revision_no': r.keyRevisionNumber,
+        'decoder_key_generation_algorithm': r.decoderKeyGenerationAlgorithm,
+        'token_class': r.tokenClass,
+        'token_subclass': r.tokenSubclass,
+        if (r.amountKwh != null) 'amount_kwh': r.amountKwh,
+        if (r.amountMoney != null) 'amount_money': r.amountMoney,
+        if (r.currency != null) 'currency': r.currency,
+        if (r.meterSerial != null) 'meter_serial': r.meterSerial,
+      };
 
   static Map<String, dynamic> _engineResponseJson(IssuedTokenRecord r) => {
-    'request_id': r.requestId,
-    'identity_fingerprint': r.identityFingerprint,
-    if (r.tidMinutes != null) 'tid_minutes': r.tidMinutes,
-    if (r.randomNo != null) 'random_no': r.randomNo,
-    if (r.meterSerial != null) 'meter_serial': r.meterSerial,
-    'iin': r.iin,
-    'iain': r.iain,
-    'key_type': r.keyType,
-    'supply_group_code': r.supplyGroupCode,
-    'tariff_index': r.tariffIndex,
-    'key_revision_number': r.keyRevisionNumber,
-    'decoder_key_generation_algorithm': r.decoderKeyGenerationAlgorithm,
-    'token_subclass': r.tokenSubclass,
-  };
+        'request_id': r.requestId,
+        'identity_fingerprint': r.identityFingerprint,
+        if (r.tidMinutes != null) 'tid_minutes': r.tidMinutes,
+        if (r.randomNo != null) 'random_no': r.randomNo,
+        if (r.meterSerial != null) 'meter_serial': r.meterSerial,
+        'iin': r.iin,
+        'iain': r.iain,
+        'key_type': r.keyType,
+        'supply_group_code': r.supplyGroupCode,
+        'tariff_index': r.tariffIndex,
+        'key_revision_number': r.keyRevisionNumber,
+        'decoder_key_generation_algorithm': r.decoderKeyGenerationAlgorithm,
+        'token_subclass': r.tokenSubclass,
+      };
 
   static IssuedTokenRecord _toRecord(IssuedTokenRow row) {
     final eng = row.engineResponse ?? const <String, dynamic>{};
@@ -236,6 +239,8 @@ class DbVendingLog implements VendingLogStore {
       amountKwh: row.amountKwh,
       tidMinutes: asInt(eng['tid_minutes']) ?? asInt(raw['tid_minutes']),
       randomNo: asInt(eng['random_no']) ?? asInt(raw['random_no']),
+      amountMoney: (raw['amount_money'] as num?)?.toDouble(),
+      currency: (raw['currency'] as String?) ?? row.currency,
       meterSerial: raw['meter_serial'] as String?,
     );
   }

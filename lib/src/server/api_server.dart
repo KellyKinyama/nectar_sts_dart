@@ -31,9 +31,11 @@ import 'package:shelf_router/shelf_router.dart';
 import '../../nectar_sts_dart.dart';
 import 'db_queries.dart' show MissingForeignRowException;
 import 'meter_registry.dart';
+import 'tariff.dart';
 import 'vending_log.dart';
 
 export 'meter_registry.dart';
+export 'tariff.dart';
 export 'vending_log.dart';
 
 /// `{status: {code, message}, request_id, data}` envelope, matching
@@ -43,17 +45,18 @@ Map<String, dynamic> _envelope({
   required String message,
   required String requestId,
   Object? data,
-}) => {
-  'status': {'code': code, 'message': message},
-  'request_id': requestId,
-  if (data != null) 'data': data,
-};
+}) =>
+    {
+      'status': {'code': code, 'message': message},
+      'request_id': requestId,
+      if (data != null) 'data': data,
+    };
 
 Response _json(int status, Map<String, dynamic> body) => Response(
-  status,
-  body: jsonEncode(body),
-  headers: {'content-type': 'application/json; charset=utf-8'},
-);
+      status,
+      body: jsonEncode(body),
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
 
 String _newRequestId() =>
     'req-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
@@ -65,10 +68,14 @@ Handler buildApiHandler(
   String? bearerToken,
   VendingLogStore? log,
   MeterStore? registry,
+  TariffBook? tariffs,
 }) {
   final router = Router()
     ..get('/healthz', _healthHandler)
-    ..post('/v1/tokens', (Request r) => _generateHandler(r, hsm, log, registry))
+    ..post(
+      '/v1/tokens',
+      (Request r) => _generateHandler(r, hsm, log, registry, tariffs),
+    )
     ..get('/v1/tokens', (Request r) => _listHandler(r, log))
     ..get(
       '/v1/tokens/<tokenNo>',
@@ -105,12 +112,14 @@ Future<Response> _generateHandler(
   VirtualHsm hsm,
   VendingLogStore? log,
   MeterStore? registry,
+  TariffBook? tariffs,
 ) async {
   final requestId = _newRequestId();
   final rawBody = await _readJsonBody(request);
   _rejectSensitiveParams(rawBody);
   final resolved = await _resolveMeterSerial(rawBody, registry);
   final params = resolved.params;
+  final pricing = _resolvePricing(params, tariffs);
   _validateAmount(params);
 
   // Pre-check TID collision if a log is configured + the request
@@ -134,8 +143,7 @@ Future<Response> _generateHandler(
         409,
         _envelope(
           code: 409,
-          message:
-              'TID collision: a token with tid_minutes=$tid was already '
+          message: 'TID collision: a token with tid_minutes=$tid was already '
               'issued for this meter$priorMsg. Use a fresh token_id.',
           requestId: requestId,
         ),
@@ -147,7 +155,7 @@ Future<Response> _generateHandler(
 
   if (log != null) {
     await log.record(
-      _recordFor(requestId, token, params, resolved.meterSerial),
+      _recordFor(requestId, token, params, resolved.meterSerial, pricing),
     );
   }
 
@@ -160,6 +168,7 @@ Future<Response> _generateHandler(
       data: {
         'token': [_tokenToJson(token)],
         if (resolved.meterSerial != null) 'meter_serial': resolved.meterSerial,
+        if (pricing != null) 'pricing': pricing.toJson(),
       },
     ),
   );
@@ -258,13 +267,13 @@ Future<Response> _lookupHandler(
 // ---- meter registry endpoints ----------------------------------
 
 Response _registryDisabled(String requestId) => _json(
-  503,
-  _envelope(
-    code: 503,
-    message: 'Meter registry is not enabled on this server',
-    requestId: requestId,
-  ),
-);
+      503,
+      _envelope(
+        code: 503,
+        message: 'Meter registry is not enabled on this server',
+        requestId: requestId,
+      ),
+    );
 
 Future<Response> _registerMeterHandler(
   Request request,
@@ -302,10 +311,10 @@ Future<Response> _registerMeterHandler(
   final MeterIdentity identity;
   try {
     identity = MeterIdentity.fromJson({
-      'issuer_identification_no': identityJson['issuer_identification_no']
-          ?.toString(),
-      'decoder_reference_number': identityJson['decoder_reference_number']
-          ?.toString(),
+      'issuer_identification_no':
+          identityJson['issuer_identification_no']?.toString(),
+      'decoder_reference_number':
+          identityJson['decoder_reference_number']?.toString(),
       'key_type': identityJson['key_type'],
       'supply_group_code': identityJson['supply_group_code']?.toString(),
       'tariff_index': identityJson['tariff_index']?.toString(),
@@ -322,9 +331,8 @@ Future<Response> _registerMeterHandler(
   final meter = RegisteredMeter(
     serial: serial,
     identity: identity,
-    encryptionAlgorithm: (body['encryption_algorithm'] ?? 'sta')
-        .toString()
-        .toLowerCase(),
+    encryptionAlgorithm:
+        (body['encryption_algorithm'] ?? 'sta').toString().toLowerCase(),
     subscriberLabel: body['subscriber_label']?.toString(),
     registeredAt: DateTime.now().toUtc(),
   );
@@ -344,8 +352,7 @@ Future<Response> _registerMeterHandler(
       412,
       _envelope(
         code: 412,
-        message:
-            'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
+        message: 'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
             'Create it in the Laravel dashboard before registering this '
             'meter.',
         requestId: requestId,
@@ -537,6 +544,111 @@ void _validateAmount(Map<String, dynamic> params) {
   }
 }
 
+/// Resolve the kWh ↔ money relationship for a credit-token mint.
+///
+/// - Returns `null` for non-credit tokens or when no tariff applies.
+/// - When the request supplies `amount_money` (and no `amount`),
+///   the helper INJECTS the converted kWh into `params['amount']`
+///   so the downstream cipher sees the same shape as a raw kWh
+///   request would.
+/// - When the request supplies `amount` (kWh) and a tariff exists,
+///   the helper computes the cash equivalent for the response
+///   envelope but does NOT touch `params['amount']`.
+/// - 400s on conflicts: both fields, missing tariff for money
+///   request, currency mismatch, non-positive money, etc.
+PricingBreakdown? _resolvePricing(
+  Map<String, dynamic> params,
+  TariffBook? tariffs,
+) {
+  if (params['class']?.toString() != '0') return null;
+  if (params['subclass']?.toString() != '0') return null;
+
+  final hasMoney = params.containsKey('amount_money');
+  final hasKwh = params.containsKey('amount');
+  if (hasMoney && hasKwh) {
+    throw const _BadRequest(
+      'Provide either "amount" (kWh) or "amount_money" (cash), not both',
+    );
+  }
+
+  final requestCurrency = params['currency']?.toString().toUpperCase();
+  final tariffIndex = params['tariff_index']?.toString();
+  final tariff = tariffs?.lookup(tariffIndex);
+
+  if (hasMoney) {
+    if (tariff == null) {
+      throw const _BadRequest(
+        'amount_money requires a configured tariff for the request '
+        'tariff_index (set TARIFF_PRICE_PER_KWH or TARIFF_TABLE on '
+        'the server)',
+      );
+    }
+    if (requestCurrency != null && requestCurrency != tariff.currency) {
+      throw _BadRequest(
+        'currency mismatch: request says "$requestCurrency" but tariff '
+        'is "${tariff.currency}"',
+      );
+    }
+    final rawMoney = params['amount_money'];
+    final money = rawMoney is num
+        ? rawMoney.toDouble()
+        : double.tryParse(rawMoney?.toString() ?? '');
+    if (money == null || money <= 0) {
+      throw _BadRequest(
+        'amount_money must be a positive number, got: $rawMoney',
+      );
+    }
+    final kwh = tariff.kwhFor(money);
+    if (kwh <= 0) {
+      throw _BadRequest(
+        'amount_money=$money ${tariff.currency} only covers the admin '
+        'fee (${tariff.adminFee} ${tariff.currency}) — no kWh purchased',
+      );
+    }
+    // Inject the resolved kWh + currency for downstream consumers.
+    params['amount'] = kwh;
+    params.remove('amount_money');
+    params['currency'] = tariff.currency;
+    return PricingBreakdown(
+      tariffIndex: tariffIndex ?? '',
+      currency: tariff.currency,
+      pricePerKwh: tariff.pricePerKwh,
+      adminFee: tariff.adminFee,
+      kwh: kwh,
+      amountMoney: money - tariff.adminFee,
+      total: money,
+    );
+  }
+
+  if (!hasKwh || tariff == null) return null;
+
+  // Plain kWh request + we have a tariff — compute money for the
+  // response envelope but leave params['amount'] alone.
+  final rawKwh = params['amount'];
+  final kwh = rawKwh is num
+      ? rawKwh.toDouble()
+      : double.tryParse(rawKwh?.toString() ?? '');
+  if (kwh == null || kwh <= 0) return null; // _validateAmount handles
+  if (requestCurrency != null && requestCurrency != tariff.currency) {
+    throw _BadRequest(
+      'currency mismatch: request says "$requestCurrency" but tariff '
+      'is "${tariff.currency}"',
+    );
+  }
+  final money = kwh * tariff.pricePerKwh;
+  final total = money + tariff.adminFee;
+  params['currency'] = tariff.currency;
+  return PricingBreakdown(
+    tariffIndex: tariffIndex ?? '',
+    currency: tariff.currency,
+    pricePerKwh: tariff.pricePerKwh,
+    adminFee: tariff.adminFee,
+    kwh: kwh,
+    amountMoney: money,
+    total: total,
+  );
+}
+
 /// Best-effort TID preview from request params, matching the same
 /// arithmetic `TokenIdentifier` does. Returns `null` when the
 /// request isn't a Class 0 credit token or doesn't carry a token_id.
@@ -588,6 +700,7 @@ IssuedTokenRecord _recordFor(
   Token token,
   Map<String, dynamic> params,
   String? meterSerial,
+  PricingBreakdown? pricing,
 ) {
   double? amount;
   int? tid;
@@ -614,6 +727,8 @@ IssuedTokenRecord _recordFor(
     amountKwh: amount,
     tidMinutes: tid,
     randomNo: randomNo,
+    amountMoney: pricing?.total,
+    currency: pricing?.currency ?? params['currency']?.toString(),
     meterSerial: meterSerial,
   );
 }
@@ -636,8 +751,8 @@ Map<String, dynamic> _tokenToJson(Token token) {
     }
     if (token.tokenIdentifier != null) {
       base['token_id_minutes'] = token.tokenIdentifier!.bitString.value;
-      base['token_id_time'] = token.tokenIdentifier!.timeOfIssue
-          .toIso8601String();
+      base['token_id_time'] =
+          token.tokenIdentifier!.timeOfIssue.toIso8601String();
     }
     if (token.randomNo != null) {
       base['random_no'] = token.randomNo!.bitString.value;

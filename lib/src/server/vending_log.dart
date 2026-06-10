@@ -45,6 +45,13 @@ class IssuedTokenRecord {
   final int? tidMinutes; // null for tokens with no TID (class 1)
   final int? randomNo;
 
+  /// Cash amount the customer paid for [amountKwh], denominated in
+  /// [currency]. Both fields are non-null together (set when the
+  /// HTTP API resolved a pricing breakdown via the configured
+  /// [TariffBook]) or both null (raw kWh request, no money math).
+  final double? amountMoney;
+  final String? currency;
+
   /// Registry serial the vending request used, if any. `null` when
   /// the request supplied the identity inline rather than via
   /// `meter_serial`.
@@ -66,6 +73,8 @@ class IssuedTokenRecord {
     this.amountKwh,
     this.tidMinutes,
     this.randomNo,
+    this.amountMoney,
+    this.currency,
     this.meterSerial,
   });
 
@@ -78,23 +87,25 @@ class IssuedTokenRecord {
       '$keyRevisionNumber|$decoderKeyGenerationAlgorithm';
 
   Map<String, dynamic> toJson() => {
-    'request_id': requestId,
-    'token_no': tokenNo,
-    'issued_at': issuedAt.toUtc().toIso8601String(),
-    'iin': iin,
-    'iain': iain,
-    'key_type': keyType,
-    'supply_group_code': supplyGroupCode,
-    'tariff_index': tariffIndex,
-    'key_revision_no': keyRevisionNumber,
-    'decoder_key_generation_algorithm': decoderKeyGenerationAlgorithm,
-    'token_class': tokenClass,
-    'token_subclass': tokenSubclass,
-    if (amountKwh != null) 'amount_kwh': amountKwh,
-    if (tidMinutes != null) 'tid_minutes': tidMinutes,
-    if (randomNo != null) 'random_no': randomNo,
-    if (meterSerial != null) 'meter_serial': meterSerial,
-  };
+        'request_id': requestId,
+        'token_no': tokenNo,
+        'issued_at': issuedAt.toUtc().toIso8601String(),
+        'iin': iin,
+        'iain': iain,
+        'key_type': keyType,
+        'supply_group_code': supplyGroupCode,
+        'tariff_index': tariffIndex,
+        'key_revision_no': keyRevisionNumber,
+        'decoder_key_generation_algorithm': decoderKeyGenerationAlgorithm,
+        'token_class': tokenClass,
+        'token_subclass': tokenSubclass,
+        if (amountKwh != null) 'amount_kwh': amountKwh,
+        if (tidMinutes != null) 'tid_minutes': tidMinutes,
+        if (randomNo != null) 'random_no': randomNo,
+        if (amountMoney != null) 'amount_money': amountMoney,
+        if (currency != null) 'currency': currency,
+        if (meterSerial != null) 'meter_serial': meterSerial,
+      };
 
   factory IssuedTokenRecord.fromJson(Map<String, dynamic> j) =>
       IssuedTokenRecord(
@@ -114,6 +125,8 @@ class IssuedTokenRecord {
         amountKwh: (j['amount_kwh'] as num?)?.toDouble(),
         tidMinutes: (j['tid_minutes'] as num?)?.toInt(),
         randomNo: (j['random_no'] as num?)?.toInt(),
+        amountMoney: (j['amount_money'] as num?)?.toDouble(),
+        currency: j['currency'] as String?,
         meterSerial: j['meter_serial'] as String?,
       );
 }
@@ -164,8 +177,8 @@ class VendingLog implements VendingLogStore {
     List<IssuedTokenRecord>? issues,
     DateTime? createdAt,
     this.filePath,
-  }) : _issues = issues ?? <IssuedTokenRecord>[],
-       createdAt = createdAt ?? DateTime.now().toUtc();
+  })  : _issues = issues ?? <IssuedTokenRecord>[],
+        createdAt = createdAt ?? DateTime.now().toUtc();
 
   List<IssuedTokenRecord> get issues => List.unmodifiable(_issues);
   int get length => _issues.length;
@@ -215,10 +228,11 @@ class VendingLog implements VendingLogStore {
   Future<bool> tidExists({
     required String identityFingerprint,
     required int? tidMinutes,
-  }) async => hasTidCollision(
-    identityFingerprint: identityFingerprint,
-    tidMinutes: tidMinutes,
-  );
+  }) async =>
+      hasTidCollision(
+        identityFingerprint: identityFingerprint,
+        tidMinutes: tidMinutes,
+      );
 
   @override
   Future<IssuedTokenRecord?> findCollision({
@@ -248,10 +262,10 @@ class VendingLog implements VendingLogStore {
   // ---- persistence --------------------------------------------
 
   Map<String, dynamic> toJson() => {
-    'schema': 'nectar_sts_dart.vending_log/v1',
-    'created_at': createdAt.toIso8601String(),
-    'issues': _issues.map((r) => r.toJson()).toList(),
-  };
+        'schema': 'nectar_sts_dart.vending_log/v1',
+        'created_at': createdAt.toIso8601String(),
+        'issues': _issues.map((r) => r.toJson()).toList(),
+      };
 
   factory VendingLog.fromJson(Map<String, dynamic> j, {String? filePath}) {
     final schema = j['schema'];
