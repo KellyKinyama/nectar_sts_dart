@@ -8,6 +8,9 @@
 ///   GET  /v1/health/backend        — issuer-backend probe (ping the
 ///                                    Prism HSM / VirtualHsm). 200 when
 ///                                    healthy, 503 when not.
+///   GET  /v1/status/nodes          — per-node status (Prism cluster
+///                                    info + alerts; VirtualHsm returns
+///                                    a single synthetic entry).
 ///
 /// All JSON responses use the `ApiResponse` envelope:
 ///   { "status":  { "code": <int>, "message": <string> },
@@ -79,6 +82,7 @@ Handler buildApiHandler(
   final router = Router()
     ..get('/healthz', _healthHandler)
     ..get('/v1/health/backend', (Request r) => _backendHealthHandler(r, issuer))
+    ..get('/v1/status/nodes', (Request r) => _nodeStatusHandler(r, issuer))
     ..post(
       '/v1/tokens',
       (Request r) => _generateHandler(r, issuer, log, registry, tariffs),
@@ -122,6 +126,21 @@ Future<Response> _backendHealthHandler(
   final report = await issuer.checkBackend();
   final ok = report['ok'] == true;
   return _json(ok ? 200 : 503, report);
+}
+
+Future<Response> _nodeStatusHandler(
+  Request request,
+  TokenIssuer issuer,
+) async {
+  try {
+    final nodes = await issuer.getNodeStatus();
+    return _json(200, {'nodes': nodes});
+  } catch (e) {
+    return _json(503, {
+      'nodes': const <Map<String, Object?>>[],
+      'error': e.toString(),
+    });
+  }
 }
 
 Future<Response> _generateHandler(

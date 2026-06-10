@@ -24,6 +24,10 @@ class _UnhealthyIssuer implements TokenIssuer {
       };
 
   @override
+  Future<List<Map<String, Object?>>> getNodeStatus() async =>
+      throw StateError('node-status: backend offline');
+
+  @override
   Future<Token> generateToken(String requestId, Map<String, dynamic> params) =>
       throw UnimplementedError();
 
@@ -101,15 +105,44 @@ void main() {
       expect(body['backend'], isNotEmpty);
     });
 
-    test('GET /v1/health/backend returns 503 when issuer is unhealthy',
-        () async {
-      final handler = buildApiHandler(_UnhealthyIssuer());
-      final r = await _get(handler, '/v1/health/backend');
-      expect(r['status'], 503);
-      final body = r['body'] as Map<String, dynamic>;
-      expect(body['ok'], isFalse);
-      expect(body['error'], contains('boom'));
-    });
+    test(
+      'GET /v1/health/backend returns 503 when issuer is unhealthy',
+      () async {
+        final handler = buildApiHandler(_UnhealthyIssuer());
+        final r = await _get(handler, '/v1/health/backend');
+        expect(r['status'], 503);
+        final body = r['body'] as Map<String, dynamic>;
+        expect(body['ok'], isFalse);
+        expect(body['error'], contains('boom'));
+      },
+    );
+
+    test(
+      'GET /v1/status/nodes returns 200 with synthetic VirtualHsm entry',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _get(handler, '/v1/status/nodes');
+        expect(r['status'], 200);
+        final body = r['body'] as Map<String, dynamic>;
+        final nodes = body['nodes'] as List;
+        expect(nodes, hasLength(1));
+        final n0 = nodes.first as Map<String, dynamic>;
+        expect((n0['info'] as Map)['backend'], isNotEmpty);
+        expect(n0['alerts'], isEmpty);
+      },
+    );
+
+    test(
+      'GET /v1/status/nodes returns 503 when issuer.getNodeStatus throws',
+      () async {
+        final handler = buildApiHandler(_UnhealthyIssuer());
+        final r = await _get(handler, '/v1/status/nodes');
+        expect(r['status'], 503);
+        final body = r['body'] as Map<String, dynamic>;
+        expect(body['nodes'], isEmpty);
+        expect(body['error'], contains('backend offline'));
+      },
+    );
 
     test('POST /v1/tokens -> POST /v1/tokens/{tokenNo} round-trips', () async {
       final handler = buildApiHandler(_hsm());

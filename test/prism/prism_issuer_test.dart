@@ -318,28 +318,91 @@ void main() {
     expect(report['roundTripMs'], isA<int>());
   });
 
-  test('PrismIssuer.checkBackend reports ok=false when connection fails',
-      () async {
-    // No fake server bound; connect to a port nothing is listening on.
-    Future<Socket> failingFactory() => Socket.connect(
-          InternetAddress.loopbackIPv4,
-          1, // privileged port nothing in CI binds to
-          timeout: const Duration(milliseconds: 200),
+  test(
+    'PrismIssuer.checkBackend reports ok=false when connection fails',
+    () async {
+      // No fake server bound; connect to a port nothing is listening on.
+      Future<Socket> failingFactory() => Socket.connect(
+            InternetAddress.loopbackIPv4,
+            1, // privileged port nothing in CI binds to
+            timeout: const Duration(milliseconds: 200),
+          );
+
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 1,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+        ),
+        failingFactory,
+      );
+
+      final report = await issuer.checkBackend();
+      expect(report['ok'], isFalse);
+      expect(report['error'], isNotEmpty);
+    },
+  );
+
+  test('PrismIssuer.getNodeStatus signs in then maps Prism nodes', () async {
+    final server = await _FakeServer.bind({
+      'signInWithPassword': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('signInWithPassword', TMessageType.reply, call.seqId),
         );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('jwt-status');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+      'getStatus': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('getStatus', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.list, 0);
+        w.writeListBegin(TType.struct, 1);
+        w.writeFieldBegin(TType.map, 1);
+        w.writeMapBegin(TType.string, TType.string, 2);
+        w.writeString('host');
+        w.writeString('prism-1');
+        w.writeString('version');
+        w.writeString('2.5.1');
+        w.writeFieldBegin(TType.list, 2);
+        w.writeListBegin(TType.struct, 1);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('LOW_DISK');
+        w.writeFieldBegin(TType.string, 2);
+        w.writeString('Disk usage above 80%');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+    });
+    addTearDown(server.close);
 
     final issuer = PrismIssuer.forTesting(
       const PrismConfig(
         host: '127.0.0.1',
-        port: 1,
+        port: 0,
         realm: 'STS',
         username: 'vendor',
         password: 'pw',
       ),
-      failingFactory,
+      server.socketFactory,
     );
 
-    final report = await issuer.checkBackend();
-    expect(report['ok'], isFalse);
-    expect(report['error'], isNotEmpty);
+    final nodes = await issuer.getNodeStatus();
+    expect(nodes, hasLength(1));
+    expect(nodes.first['info'], {'host': 'prism-1', 'version': '2.5.1'});
+    final alerts = nodes.first['alerts'] as List;
+    expect(alerts, hasLength(1));
+    expect((alerts.first as Map)['eCode'], 'LOW_DISK');
+    expect((alerts.first as Map)['eMsg'], 'Disk usage above 80%');
   });
 }

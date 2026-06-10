@@ -54,8 +54,23 @@ abstract class TokenIssuer {
   /// surfaces this on `GET /v1/health/backend` — a healthy result
   /// returns 200, an unhealthy one returns 503. Default impl just
   /// reports the issuer name; remote-backed issuers should override.
-  FutureOr<Map<String, Object?>> checkBackend() =>
-      {'ok': true, 'backend': name};
+  FutureOr<Map<String, Object?>> checkBackend() => {
+        'ok': true,
+        'backend': name,
+      };
+
+  /// Per-node operational status. The HTTP layer surfaces this on
+  /// `GET /v1/status/nodes`. Each entry carries an arbitrary `info`
+  /// map (host, version, uptime, …) plus a list of active alerts
+  /// (`{eCode, eMsg}`). Default impl returns a single synthetic
+  /// entry for in-process backends; remote-backed issuers should
+  /// override to enumerate their cluster.
+  FutureOr<List<Map<String, Object?>>> getNodeStatus() async => [
+        {
+          'info': {'backend': name},
+          'alerts': const <Map<String, Object?>>[],
+        },
+      ];
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -86,6 +101,14 @@ class VirtualHsmIssuer implements TokenIssuer {
         'ok': true,
         'backend': name,
       };
+
+  @override
+  Future<List<Map<String, Object?>>> getNodeStatus() async => [
+        {
+          'info': {'backend': name},
+          'alerts': const <Map<String, Object?>>[],
+        },
+      ];
 }
 
 /// Connection parameters for a remote Prism HSM. Mirrors the
@@ -274,6 +297,35 @@ class PrismIssuer implements TokenIssuer {
         'error': e.toString(),
         'roundTripMs': stopwatch.elapsedMilliseconds,
       };
+    }
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> getNodeStatus() async {
+    final requestId = 'status-${DateTime.now().microsecondsSinceEpoch}';
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      final nodes = await client.getStatus(
+        messageId: requestId,
+        accessToken: accessToken,
+      );
+      return [
+        for (final n in nodes)
+          {
+            'info': Map<String, String>.from(n.info),
+            'alerts': [
+              for (final a in n.alerts) {'eCode': a.eCode, 'eMsg': a.eMsgEn},
+            ],
+          },
+      ];
+    } finally {
+      await client.close();
     }
   }
 
