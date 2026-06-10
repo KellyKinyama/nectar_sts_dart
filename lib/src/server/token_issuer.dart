@@ -71,6 +71,25 @@ abstract class TokenIssuer {
           'alerts': const <Map<String, Object?>>[],
         },
       ];
+
+  /// Issue the full Key Change Token (KCT) bundle migrating a meter
+  /// to a new SGC / KRN / TI. The HTTP layer surfaces this on
+  /// `POST /v1/tokens/key-change`. Returns the raw per-token
+  /// `{tokenNo, subclass, description}` records — STA/DEA returns
+  /// 2 entries (1st + 2nd section), MISTY1 returns 4 (1st…4th).
+  /// All entries are part of one atomic set and must be applied
+  /// together.
+  ///
+  /// Default impl throws — only remote-backed issuers (Prism) are
+  /// wired today; the in-process [VirtualHsmIssuer] would have to
+  /// reproduce Prism's atomic bundling, which is out of MVP scope.
+  FutureOr<List<Map<String, Object?>>> issueKeyChangeTokens(
+    String requestId,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support atomic Key Change Token issuance.',
+      );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -109,6 +128,15 @@ class VirtualHsmIssuer implements TokenIssuer {
           'alerts': const <Map<String, Object?>>[],
         },
       ];
+
+  @override
+  Future<List<Map<String, Object?>>> issueKeyChangeTokens(
+    String requestId,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support atomic Key Change Token issuance.',
+      );
 }
 
 /// Connection parameters for a remote Prism HSM. Mirrors the
@@ -329,6 +357,41 @@ class PrismIssuer implements TokenIssuer {
     }
   }
 
+  @override
+  Future<List<Map<String, Object?>>> issueKeyChangeTokens(
+    String requestId,
+    Map<String, dynamic> params,
+  ) async {
+    final meterConfig = _meterConfigFromParams(params);
+    final newConfig = _meterConfigAmendmentFromParams(params);
+
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      final tokens = await client.issueKeyChangeTokens(
+        messageId: requestId,
+        accessToken: accessToken,
+        meterConfig: meterConfig,
+        newConfig: newConfig,
+      );
+      return [
+        for (final t in tokens)
+          {
+            'tokenNo': t.tokenDec,
+            'subclass': t.subclass,
+            'description': t.description,
+          },
+      ];
+    } finally {
+      await client.close();
+    }
+  }
+
   // ---- helpers ----------------------------------------------------
 
   prism.MeterConfigIn _meterConfigFromParams(Map<String, dynamic> params) {
@@ -357,6 +420,21 @@ class PrismIssuer implements TokenIssuer {
       ti: ti,
       ken: ken,
     );
+  }
+
+  prism.MeterConfigAmendment _meterConfigAmendmentFromParams(
+    Map<String, dynamic> params,
+  ) {
+    final toSgc = int.parse(
+      _requiredString(params, VirtualHsmParams.newSupplyGroupCode),
+    );
+    final toKrn = int.parse(
+      _requiredString(params, VirtualHsmParams.newKeyRevisionNumber),
+    );
+    final toTi = int.parse(
+      _requiredString(params, VirtualHsmParams.newTariffIndex),
+    );
+    return prism.MeterConfigAmendment(toSgc: toSgc, toKrn: toKrn, toTi: toTi);
   }
 
   int _eaCode(Map<String, dynamic> params) {

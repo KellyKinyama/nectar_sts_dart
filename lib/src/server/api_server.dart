@@ -4,6 +4,12 @@
 /// Endpoints:
 ///   POST /v1/tokens                — generate. Body: VirtualHsmParams JSON.
 ///   POST /v1/tokens/{tokenNo}      — decode.   Body: VirtualHsmParams JSON.
+///   POST /v1/tokens/key-change     — issue the atomic Key Change Token
+///                                    bundle (2 entries for STA/DEA, 4 for
+///                                    MISTY1). Body adds `new_supply_group_code`,
+///                                    `new_key_revision_number`,
+///                                    `new_tariff_index` to the regular
+///                                    VirtualHsmParams shape.
 ///   GET  /healthz                  — liveness probe.
 ///   GET  /v1/health/backend        — issuer-backend probe (ping the
 ///                                    Prism HSM / VirtualHsm). 200 when
@@ -88,6 +94,10 @@ Handler buildApiHandler(
       (Request r) => _generateHandler(r, issuer, log, registry, tariffs),
     )
     ..get('/v1/tokens', (Request r) => _listHandler(r, log))
+    ..post(
+      '/v1/tokens/key-change',
+      (Request r) => _keyChangeHandler(r, issuer),
+    )
     ..get(
       '/v1/tokens/<tokenNo>',
       (Request r, String tokenNo) => _lookupHandler(r, log, tokenNo),
@@ -128,10 +138,7 @@ Future<Response> _backendHealthHandler(
   return _json(ok ? 200 : 503, report);
 }
 
-Future<Response> _nodeStatusHandler(
-  Request request,
-  TokenIssuer issuer,
-) async {
+Future<Response> _nodeStatusHandler(Request request, TokenIssuer issuer) async {
   try {
     final nodes = await issuer.getNodeStatus();
     return _json(200, {'nodes': nodes});
@@ -229,6 +236,22 @@ Future<Response> _decodeHandler(
       message: 'Token decoded',
       requestId: requestId,
       data: {'token_details': _tokenToJson(decoded)},
+    ),
+  );
+}
+
+Future<Response> _keyChangeHandler(Request request, TokenIssuer issuer) async {
+  final requestId = _newRequestId();
+  final body = await _readJsonBody(request);
+  _rejectSensitiveParams(body);
+  final tokens = await issuer.issueKeyChangeTokens(requestId, body);
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Key change tokens issued',
+      requestId: requestId,
+      data: {'tokens': tokens},
     ),
   );
 }

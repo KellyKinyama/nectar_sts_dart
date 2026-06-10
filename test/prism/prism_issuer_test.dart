@@ -405,4 +405,71 @@ void main() {
     expect((alerts.first as Map)['eCode'], 'LOW_DISK');
     expect((alerts.first as Map)['eMsg'], 'Disk usage above 80%');
   });
+
+  test(
+    'PrismIssuer.issueKeyChangeTokens signs in then maps the bundle',
+    () async {
+      final server = await _FakeServer.bind({
+        'signInWithPassword': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('jwt-kct');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+        'issueKeyChangeTokens': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueKeyChangeTokens', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 4);
+          for (final sc in const [3, 4, 8, 9]) {
+            w.writeFieldBegin(TType.i16, 11);
+            w.writeI16(sc);
+            w.writeFieldBegin(TType.string, 20);
+            w.writeString('KeyChange:section$sc');
+            w.writeFieldBegin(TType.string, 30);
+            w.writeString('${sc}0000000000000000000'.padRight(20, '0'));
+            w.writeFieldStop();
+          }
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 0,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+        ),
+        server.socketFactory,
+      );
+
+      final tokens = await issuer.issueKeyChangeTokens('req-kct', {
+        VirtualHsmParams.decoderReferenceNumber: '56000000001',
+        VirtualHsmParams.encryptionAlgorithm: 'misty1',
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '1',
+        VirtualHsmParams.keyRevisionNo: '1',
+        VirtualHsmParams.newSupplyGroupCode: '234567',
+        VirtualHsmParams.newKeyRevisionNumber: '2',
+        VirtualHsmParams.newTariffIndex: '1',
+      });
+
+      expect(tokens, hasLength(4));
+      expect(tokens.map((t) => t['subclass']).toList(), [3, 4, 8, 9]);
+      expect(tokens.first['description'], 'KeyChange:section3');
+      expect(tokens.first['tokenNo'], startsWith('30'));
+    },
+  );
 }

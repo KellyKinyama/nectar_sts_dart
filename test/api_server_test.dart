@@ -38,6 +38,13 @@ class _UnhealthyIssuer implements TokenIssuer {
     Map<String, dynamic> params,
   ) =>
       throw UnimplementedError();
+
+  @override
+  Future<List<Map<String, Object?>>> issueKeyChangeTokens(
+    String requestId,
+    Map<String, dynamic> params,
+  ) =>
+      throw UnimplementedError();
 }
 
 Map<String, dynamic> _baseParams() => {
@@ -141,6 +148,25 @@ void main() {
         final body = r['body'] as Map<String, dynamic>;
         expect(body['nodes'], isEmpty);
         expect(body['error'], contains('backend offline'));
+      },
+    );
+
+    test(
+      'POST /v1/tokens/key-change -> 501 NotImplemented for VirtualHsm',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/key-change', {
+          ..._baseParams(),
+          'new_supply_group_code': '234567',
+          'new_key_revision_number': 2,
+          'new_tariff_index': '07',
+        });
+        expect(r['status'], 501);
+        final body = r['body'] as Map<String, dynamic>;
+        expect(
+          (body['status'] as Map)['message'],
+          contains('Key Change Token'),
+        );
       },
     );
 
