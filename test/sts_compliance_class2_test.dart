@@ -2,11 +2,13 @@
 //   src/test/java/ke/co/nectar/token/domain/token/
 //     STSComplianceTests_STS_531_1_0_02_CTSA0{1,3,4,5,6,7,9,12,13,14}.java
 //     STSComplianceTests_STS_531_1_0_02_CTSA25.java
+//     STSComplianceTests_Nectar_1.java (vendor extension Amount sweep)
 //
 // SCOPE:
 //   - STA (EA07) Class 0 TransferElectricityCredit and Class 2
 //     management tokens / Key Change Tokens (1st/2nd section).
-//   - DKGA-02 derived key for CTSA01/03/04/05/06/07/09/12/13/14.
+//   - DKGA-02 derived key for CTSA01/03/04/05/06/07/09/12/13/14 and
+//     Nectar_1.
 //   - DKGA-04 derived key for CTSA25 (DKGA-04 + STA combo: 20-byte
 //     vending key, SGC='123457', baseDate sweep 1993/2014/2035).
 //
@@ -646,10 +648,7 @@ void main() {
 
     test('step1: baseDate=1993, KRN=1, 01/01/2009 08:00:00, 0.1 kWh → '
         '15697331168573253829', () {
-      final dk = dkga04(
-        baseDate: BaseDate.date1993,
-        krn: KeyRevisionNumber(1),
-      );
+      final dk = dkga04(baseDate: BaseDate.date1993, krn: KeyRevisionNumber(1));
       final token = TransferElectricityCreditToken('request_id')
         ..amountPurchased = Amount(0.1)
         ..tokenIdentifier = _tid(DateTime.utc(2009, 1, 1, 8, 0, 0))
@@ -660,10 +659,7 @@ void main() {
 
     test('step5: baseDate=2014, KRN=4, 01/01/2014 08:00:00, 0.1 kWh → '
         '20324881626382980759', () {
-      final dk = dkga04(
-        baseDate: BaseDate.date2014,
-        krn: KeyRevisionNumber(4),
-      );
+      final dk = dkga04(baseDate: BaseDate.date2014, krn: KeyRevisionNumber(4));
       final token = TransferElectricityCreditToken('request_id')
         ..amountPurchased = Amount(0.1)
         ..tokenIdentifier = TokenIdentifier(
@@ -677,10 +673,7 @@ void main() {
 
     test('step9: baseDate=2035, KRN=5, 01/01/2035 08:00:00, 0.1 kWh → '
         '09239624803025986815', () {
-      final dk = dkga04(
-        baseDate: BaseDate.date2035,
-        krn: KeyRevisionNumber(5),
-      );
+      final dk = dkga04(baseDate: BaseDate.date2035, krn: KeyRevisionNumber(5));
       final token = TransferElectricityCreditToken('request_id')
         ..amountPurchased = Amount(0.1)
         ..tokenIdentifier = TokenIdentifier(
@@ -690,6 +683,98 @@ void main() {
         ..randomNo = _rnd5;
       TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
       expect(token.tokenNo, equals('09239624803025986815'));
+    });
+  });
+
+  group('Nectar_1 (TransferElectricityCredit Amount sweep, STA)', () {
+    // Vendor extension suite: same DKGA-02 + STA setup as CTSA01_02
+    // (PAN=600727000000000009, baseDate=1993) but with 15 amount
+    // steps spanning the full STS exponent/mantissa range, including
+    // sub-1 and fractional values. Water/gas variants of each step
+    // are intentionally skipped per the Class 0 SubClass scope.
+    String genTec(DateTime issuedAt, double amount) {
+      final dk = defaultDecoderKey();
+      final token = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(amount)
+        ..tokenIdentifier = _tid(issuedAt)
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    test('step1: 21/04/2004 10:01:00, 1 kWh → 66475648316756821785', () {
+      expect(genTec(DateTime.utc(2004, 4, 21, 10, 1, 0), 1),
+          equals('66475648316756821785'));
+    });
+    test('step2A: 21/05/2004 10:02:00, 16383 kWh → 36924780240841024731',
+        () {
+      expect(genTec(DateTime.utc(2004, 5, 21, 10, 2, 0), 16383),
+          equals('36924780240841024731'));
+    });
+    test('step3A: 21/04/2005 10:03:00, 16384 kWh → 65724708343212635258',
+        () {
+      expect(genTec(DateTime.utc(2005, 4, 21, 10, 3, 0), 16384),
+          equals('65724708343212635258'));
+    });
+    test('step4: 22/04/2005 10:04:00, 180224 kWh → 42371551666535254341',
+        () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 10, 4, 0), 180224),
+          equals('42371551666535254341'));
+    });
+    test('step5B: 22/04/2005 11:00:00, 1818624 kWh → '
+        '18009632033176370418', () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 11, 0, 0), 1818624),
+          equals('18009632033176370418'));
+    });
+    test('step6A: 22/04/2005 11:01:00, 1820162 kWh → '
+        '12805131357955755939', () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 11, 1, 0), 1820162),
+          equals('12805131357955755939'));
+    });
+    test('step7: 22/04/2005 11:02:00, 182042 kWh → 57144000167239742426',
+        () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 11, 2, 0), 182042),
+          equals('57144000167239742426'));
+    });
+    test('step8B: 22/04/2005 11:03:00, 123546 kWh → '
+        '37909354224671858723', () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 11, 3, 0), 123546),
+          equals('37909354224671858723'));
+    });
+    test('step9B: 22/04/2005 11:04:00, 1763427 kWh → '
+        '71777743993390229056', () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 11, 4, 0), 1763427),
+          equals('71777743993390229056'));
+    });
+    test('step10: 22/04/2005 11:05:00, 14782 kWh → 73561917813841338074',
+        () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 11, 5, 0), 14782),
+          equals('73561917813841338074'));
+    });
+    test('step11B: 22/04/2005 20:10:00, 1.82 kWh → 55160880109952893498',
+        () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 20, 10, 0), 1.82),
+          equals('55160880109952893498'));
+    });
+    test('step12A: 22/04/2005 11:00:00, 18981.349 kWh → '
+        '43183161221229495584', () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 11, 0, 0), 18981.349),
+          equals('43183161221229495584'));
+    });
+    test('step13: 22/04/2005 20:12:00, 1897.345 kWh → '
+        '62624214800861085936', () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 20, 12, 0), 1897.345),
+          equals('62624214800861085936'));
+    });
+    test('step14A: 22/04/2005 20:14:00, 10897.345 kWh → '
+        '08032634883920046224', () {
+      expect(genTec(DateTime.utc(2005, 4, 22, 20, 14, 0), 10897.345),
+          equals('08032634883920046224'));
+    });
+    test('step15B: 12/05/2005 20:15:00, 0.4712 kWh → '
+        '05983059757600918504', () {
+      expect(genTec(DateTime.utc(2005, 5, 12, 20, 15, 0), 0.4712),
+          equals('05983059757600918504'));
     });
   });
 }
