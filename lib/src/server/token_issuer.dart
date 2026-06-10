@@ -55,9 +55,9 @@ abstract class TokenIssuer {
   /// returns 200, an unhealthy one returns 503. Default impl just
   /// reports the issuer name; remote-backed issuers should override.
   FutureOr<Map<String, Object?>> checkBackend() => {
-    'ok': true,
-    'backend': name,
-  };
+        'ok': true,
+        'backend': name,
+      };
 
   /// Per-node operational status. The HTTP layer surfaces this on
   /// `GET /v1/status/nodes`. Each entry carries an arbitrary `info`
@@ -66,11 +66,11 @@ abstract class TokenIssuer {
   /// entry for in-process backends; remote-backed issuers should
   /// override to enumerate their cluster.
   FutureOr<List<Map<String, Object?>>> getNodeStatus() async => [
-    {
-      'info': {'backend': name},
-      'alerts': const <Map<String, Object?>>[],
-    },
-  ];
+        {
+          'info': {'backend': name},
+          'alerts': const <Map<String, Object?>>[],
+        },
+      ];
 
   /// Issue the full Key Change Token (KCT) bundle migrating a meter
   /// to a new SGC / KRN / TI. The HTTP layer surfaces this on
@@ -86,9 +86,10 @@ abstract class TokenIssuer {
   FutureOr<List<Map<String, Object?>>> issueKeyChangeTokens(
     String requestId,
     Map<String, dynamic> params,
-  ) => throw NotImplementedException(
-    '$name does not support atomic Key Change Token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support atomic Key Change Token issuance.',
+      );
 
   /// Issue a Class 2 Management/Secondary-Engineering (MSE) token.
   /// [subclass] picks the operation (`PrismHSMConnector.MseToken`):
@@ -105,9 +106,10 @@ abstract class TokenIssuer {
     int subclass,
     double transferAmount,
     Map<String, dynamic> params,
-  ) => throw NotImplementedException(
-    '$name does not support MSE token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support MSE token issuance.',
+      );
 
   /// Issue a Class 1 / 3 Non-Meter-Specific Engineering (NMSE) test
   /// token. The token is independent of any meter's keys; the
@@ -124,9 +126,10 @@ abstract class TokenIssuer {
     int subclass,
     int control,
     int manufacturerCode,
-  ) => throw NotImplementedException(
-    '$name does not support NMSE meter-test token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support NMSE meter-test token issuance.',
+      );
 
   /// Issue a Class 0 currency-credit token (subclasses 4–7:
   /// `ElectricityCurrency`, `WaterCurrency`, `GasCurrency`,
@@ -141,9 +144,10 @@ abstract class TokenIssuer {
     String requestId,
     int subclass,
     Map<String, dynamic> params,
-  ) => throw NotImplementedException(
-    '$name does not support currency-credit token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support currency-credit token issuance.',
+      );
 
   /// Idempotency replay: re-fetch the tokens previously issued for
   /// [originalRequestId]. Used when the original RPC timed out or
@@ -158,9 +162,10 @@ abstract class TokenIssuer {
   FutureOr<List<Map<String, Object?>>> fetchTokenResult(
     String requestId,
     String originalRequestId,
-  ) => throw NotImplementedException(
-    '$name does not support token-result replay.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support token-result replay.',
+      );
 
   /// Verify a 20-digit token against a meter configuration WITHOUT
   /// throwing on invalid. Returns the raw
@@ -174,9 +179,10 @@ abstract class TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) => throw NotImplementedException(
-    '$name does not support token verification.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support token verification.',
+      );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -199,29 +205,31 @@ class VirtualHsmIssuer implements TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) => hsm.decodeToken(requestId, tokenNo, params);
+  ) =>
+      hsm.decodeToken(requestId, tokenNo, params);
 
   @override
   Future<Map<String, Object?>> checkBackend() async => {
-    'ok': true,
-    'backend': name,
-  };
+        'ok': true,
+        'backend': name,
+      };
 
   @override
   Future<List<Map<String, Object?>>> getNodeStatus() async => [
-    {
-      'info': {'backend': name},
-      'alerts': const <Map<String, Object?>>[],
-    },
-  ];
+        {
+          'info': {'backend': name},
+          'alerts': const <Map<String, Object?>>[],
+        },
+      ];
 
   @override
   Future<List<Map<String, Object?>>> issueKeyChangeTokens(
     String requestId,
     Map<String, dynamic> params,
-  ) => throw NotImplementedException(
-    '$name does not support atomic Key Change Token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support atomic Key Change Token issuance.',
+      );
 
   @override
   Future<List<Map<String, Object?>>> issueMseToken(
@@ -229,9 +237,10 @@ class VirtualHsmIssuer implements TokenIssuer {
     int subclass,
     double transferAmount,
     Map<String, dynamic> params,
-  ) => throw NotImplementedException(
-    '$name does not support MSE token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support MSE token issuance.',
+      );
 
   @override
   Future<Map<String, Object?>> issueMeterTestToken(
@@ -239,26 +248,29 @@ class VirtualHsmIssuer implements TokenIssuer {
     int subclass,
     int control,
     int manufacturerCode,
-  ) => throw NotImplementedException(
-    '$name does not support NMSE meter-test token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support NMSE meter-test token issuance.',
+      );
 
   @override
   Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
     String requestId,
     int subclass,
     Map<String, dynamic> params,
-  ) => throw NotImplementedException(
-    '$name does not support currency-credit token issuance.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support currency-credit token issuance.',
+      );
 
   @override
   Future<List<Map<String, Object?>>> fetchTokenResult(
     String requestId,
     String originalRequestId,
-  ) => throw NotImplementedException(
-    '$name does not support token-result replay.',
-  );
+  ) =>
+      throw NotImplementedException(
+        '$name does not support token-result replay.',
+      );
 
   @override
   Future<Map<String, Object?>> verifyToken(
@@ -322,8 +334,8 @@ class VirtualHsmIssuer implements TokenIssuer {
 Map<String, Object?> _virtualHsmVerifyTokenShape(String tokenNo, Token token) {
   final amount =
       token is TransferElectricityCreditToken && token.amountPurchased != null
-      ? token.amountPurchased!.unitsPurchased.toString()
-      : '';
+          ? token.amountPurchased!.unitsPurchased.toString()
+          : '';
   return {
     'tokenNo': tokenNo,
     'subclass': token.tokenSubClass?.bitString.value ?? 0,
@@ -354,6 +366,16 @@ class PrismConfig {
   /// which sets `socket.setSoTimeout(0)`).
   final Duration? connectTimeout;
 
+  /// How long an access token returned by `signInWithPassword` is
+  /// cached and reused across RPC calls before the issuer signs in
+  /// again. The Java reference re-authenticates on every call;
+  /// caching for a short window cuts one network round-trip from
+  /// every Prism RPC without materially weakening the auth posture.
+  /// Set to [Duration.zero] to disable caching (re-sign-in every
+  /// call). The default of 10 minutes is well below typical Prism
+  /// JWT expiry windows.
+  final Duration authTokenTtl;
+
   const PrismConfig({
     required this.host,
     required this.port,
@@ -362,6 +384,7 @@ class PrismConfig {
     required this.password,
     this.insecureTls = true,
     this.connectTimeout,
+    this.authTokenTtl = const Duration(minutes: 10),
   });
 }
 
@@ -375,12 +398,21 @@ class PrismIssuer implements TokenIssuer {
 
   final SocketFactory? _socketFactoryOverride;
 
+  /// Cached JWT from the most recent successful `signInWithPassword`,
+  /// reused until `expiresAt` (= issue-time + [PrismConfig.authTokenTtl]).
+  _CachedAuth? _cachedAuth;
+
+  /// In-flight sign-in coalescer: when multiple RPC calls find the
+  /// cache empty / stale at the same time, only the first triggers a
+  /// real `signInWithPassword`; the others await this completer.
+  Completer<String>? _inflightAuth;
+
   PrismIssuer(this.config) : _socketFactoryOverride = null;
 
   /// Test-only ctor: inject an in-process plain-TCP factory so the
   /// fake Thrift server in `test/prism/` doesn't need certificates.
   PrismIssuer.forTesting(this.config, SocketFactory socketFactory)
-    : _socketFactoryOverride = socketFactory;
+      : _socketFactoryOverride = socketFactory;
 
   @override
   String get name => 'PrismIssuer(${config.host}:${config.port})';
@@ -393,6 +425,49 @@ class PrismIssuer implements TokenIssuer {
         insecureTls: config.insecureTls,
         timeout: config.connectTimeout,
       );
+
+  /// Returns a usable Prism access token, either from cache (if still
+  /// within [PrismConfig.authTokenTtl]) or by signing in fresh. Concurrent
+  /// callers that find the cache stale share a single in-flight sign-in.
+  Future<String> _getAccessToken(
+    prism.TokenApiClient client,
+    String requestId,
+  ) async {
+    final ttl = config.authTokenTtl;
+    final now = DateTime.now();
+    final cached = _cachedAuth;
+    if (ttl > Duration.zero &&
+        cached != null &&
+        cached.expiresAt.isAfter(now)) {
+      return cached.token;
+    }
+    final inflight = _inflightAuth;
+    if (inflight != null) return inflight.future;
+
+    final c = Completer<String>();
+    _inflightAuth = c;
+    try {
+      final token = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      if (ttl > Duration.zero) {
+        _cachedAuth = _CachedAuth(token, now.add(ttl));
+      } else {
+        _cachedAuth = null;
+      }
+      c.complete(token);
+      return token;
+    } catch (e, st) {
+      _cachedAuth = null;
+      c.completeError(e, st);
+      rethrow;
+    } finally {
+      _inflightAuth = null;
+    }
+  }
 
   @override
   Future<Token> generateToken(
@@ -415,12 +490,7 @@ class PrismIssuer implements TokenIssuer {
 
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
 
       // Prism expects scaled units: ×10 for kWh credit subclass 0.
       // Currency-credit variants (subclasses 4–7) would use ×100000
@@ -462,12 +532,7 @@ class PrismIssuer implements TokenIssuer {
     final meterConfig = _meterConfigFromParams(params);
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       final result = await client.verifyToken(
         messageId: requestId,
         accessToken: accessToken,
@@ -526,12 +591,7 @@ class PrismIssuer implements TokenIssuer {
     final requestId = 'status-${DateTime.now().microsecondsSinceEpoch}';
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       final nodes = await client.getStatus(
         messageId: requestId,
         accessToken: accessToken,
@@ -560,12 +620,7 @@ class PrismIssuer implements TokenIssuer {
 
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       final tokens = await client.issueKeyChangeTokens(
         messageId: requestId,
         accessToken: accessToken,
@@ -597,12 +652,7 @@ class PrismIssuer implements TokenIssuer {
 
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       final tokens = await client.issueMseToken(
         messageId: requestId,
         accessToken: accessToken,
@@ -633,12 +683,7 @@ class PrismIssuer implements TokenIssuer {
   ) async {
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       final t = await client.issueMeterTestToken(
         messageId: requestId,
         accessToken: accessToken,
@@ -678,12 +723,7 @@ class PrismIssuer implements TokenIssuer {
 
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       // Currency-credit subclasses (4–7) scale by 100000 per
       // PrismHSMConnector.generateCreditToken, vs ×10 for kWh.
       final scaled = amount * 100000;
@@ -717,12 +757,7 @@ class PrismIssuer implements TokenIssuer {
   ) async {
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       final tokens = await client.fetchTokenResult(
         messageId: requestId,
         accessToken: accessToken,
@@ -751,12 +786,7 @@ class PrismIssuer implements TokenIssuer {
     final meterConfig = _meterConfigFromParams(params);
     final client = await prism.TokenApiClient.connect(_factory);
     try {
-      final accessToken = await client.signInWithPassword(
-        messageId: requestId,
-        realm: config.realm,
-        username: config.username,
-        password: config.password,
-      );
+      final accessToken = await _getAccessToken(client, requestId);
       final result = await client.verifyToken(
         messageId: requestId,
         accessToken: accessToken,
@@ -795,8 +825,7 @@ class PrismIssuer implements TokenIssuer {
       _requiredString(params, VirtualHsmParams.keyRevisionNo),
     );
     final ti = int.parse(_requiredString(params, VirtualHsmParams.tariffIndex));
-    final ken =
-        int.tryParse(
+    final ken = int.tryParse(
           (params[VirtualHsmParams.keyExpiryNumberHighOrder] ?? '0').toString(),
         ) ??
         0;
@@ -923,4 +952,10 @@ class PrismIssuer implements TokenIssuer {
       'PrismIssuer: param "$key" must be numeric, got: $v',
     );
   }
+}
+
+class _CachedAuth {
+  final String token;
+  final DateTime expiresAt;
+  const _CachedAuth(this.token, this.expiresAt);
 }
