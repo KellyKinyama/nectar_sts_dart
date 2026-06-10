@@ -1,5 +1,5 @@
 /// `shelf` handler exposing a NectarAPI-compatible REST surface on
-/// top of a [VirtualHsm] (electricity-credit tokens only — MVP scope).
+/// top of a [TokenIssuer] (electricity-credit tokens only — MVP scope).
 ///
 /// Endpoints:
 ///   POST /v1/tokens                — generate. Body: VirtualHsmParams JSON.
@@ -32,10 +32,12 @@ import '../../nectar_sts_dart.dart';
 import 'db_queries.dart' show MissingForeignRowException;
 import 'meter_registry.dart';
 import 'tariff.dart';
+import 'token_issuer.dart';
 import 'vending_log.dart';
 
 export 'meter_registry.dart';
 export 'tariff.dart';
+export 'token_issuer.dart';
 export 'vending_log.dart';
 
 /// `{status: {code, message}, request_id, data}` envelope, matching
@@ -45,25 +47,27 @@ Map<String, dynamic> _envelope({
   required String message,
   required String requestId,
   Object? data,
-}) => {
-  'status': {'code': code, 'message': message},
-  'request_id': requestId,
-  if (data != null) 'data': data,
-};
+}) =>
+    {
+      'status': {'code': code, 'message': message},
+      'request_id': requestId,
+      if (data != null) 'data': data,
+    };
 
 Response _json(int status, Map<String, dynamic> body) => Response(
-  status,
-  body: jsonEncode(body),
-  headers: {'content-type': 'application/json; charset=utf-8'},
-);
+      status,
+      body: jsonEncode(body),
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
 
 String _newRequestId() =>
     'req-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
 
-/// Build a `shelf` `Handler` bound to [hsm]. Pass [bearerToken] (or
-/// set `NECTAR_API_TOKEN`) to require `Authorization: Bearer <token>`.
+/// Build a `shelf` `Handler` bound to [issuer]. Pass [bearerToken]
+/// (or set `NECTAR_API_TOKEN`) to require
+/// `Authorization: Bearer <token>`.
 Handler buildApiHandler(
-  VirtualHsm hsm, {
+  TokenIssuer issuer, {
   String? bearerToken,
   VendingLogStore? log,
   MeterStore? registry,
@@ -73,7 +77,7 @@ Handler buildApiHandler(
     ..get('/healthz', _healthHandler)
     ..post(
       '/v1/tokens',
-      (Request r) => _generateHandler(r, hsm, log, registry, tariffs),
+      (Request r) => _generateHandler(r, issuer, log, registry, tariffs),
     )
     ..get('/v1/tokens', (Request r) => _listHandler(r, log))
     ..get(
@@ -82,7 +86,8 @@ Handler buildApiHandler(
     )
     ..post(
       '/v1/tokens/<tokenNo>',
-      (Request r, String tokenNo) => _decodeHandler(r, hsm, tokenNo, registry),
+      (Request r, String tokenNo) =>
+          _decodeHandler(r, issuer, tokenNo, registry),
     )
     ..post('/v1/meters', (Request r) => _registerMeterHandler(r, registry))
     ..get('/v1/meters', (Request r) => _listMetersHandler(r, registry))
@@ -108,7 +113,7 @@ Response _healthHandler(Request request) =>
 
 Future<Response> _generateHandler(
   Request request,
-  VirtualHsm hsm,
+  TokenIssuer issuer,
   VendingLogStore? log,
   MeterStore? registry,
   TariffBook? tariffs,
@@ -142,8 +147,7 @@ Future<Response> _generateHandler(
         409,
         _envelope(
           code: 409,
-          message:
-              'TID collision: a token with tid_minutes=$tid was already '
+          message: 'TID collision: a token with tid_minutes=$tid was already '
               'issued for this meter$priorMsg. Use a fresh token_id.',
           requestId: requestId,
         ),
@@ -151,7 +155,7 @@ Future<Response> _generateHandler(
     }
   }
 
-  final token = hsm.generateToken(requestId, params);
+  final token = issuer.generateToken(requestId, params);
 
   if (log != null) {
     await log.record(
@@ -176,7 +180,7 @@ Future<Response> _generateHandler(
 
 Future<Response> _decodeHandler(
   Request request,
-  VirtualHsm hsm,
+  TokenIssuer issuer,
   String tokenNo,
   MeterStore? registry,
 ) async {
@@ -184,7 +188,7 @@ Future<Response> _decodeHandler(
   final rawBody = await _readJsonBody(request);
   _rejectSensitiveParams(rawBody);
   final params = (await _resolveMeterSerial(rawBody, registry)).params;
-  final decoded = hsm.decodeToken(requestId, tokenNo, params);
+  final decoded = issuer.decodeToken(requestId, tokenNo, params);
 
   return _json(
     200,
@@ -267,13 +271,13 @@ Future<Response> _lookupHandler(
 // ---- meter registry endpoints ----------------------------------
 
 Response _registryDisabled(String requestId) => _json(
-  503,
-  _envelope(
-    code: 503,
-    message: 'Meter registry is not enabled on this server',
-    requestId: requestId,
-  ),
-);
+      503,
+      _envelope(
+        code: 503,
+        message: 'Meter registry is not enabled on this server',
+        requestId: requestId,
+      ),
+    );
 
 Future<Response> _registerMeterHandler(
   Request request,
@@ -311,10 +315,10 @@ Future<Response> _registerMeterHandler(
   final MeterIdentity identity;
   try {
     identity = MeterIdentity.fromJson({
-      'issuer_identification_no': identityJson['issuer_identification_no']
-          ?.toString(),
-      'decoder_reference_number': identityJson['decoder_reference_number']
-          ?.toString(),
+      'issuer_identification_no':
+          identityJson['issuer_identification_no']?.toString(),
+      'decoder_reference_number':
+          identityJson['decoder_reference_number']?.toString(),
       'key_type': identityJson['key_type'],
       'supply_group_code': identityJson['supply_group_code']?.toString(),
       'tariff_index': identityJson['tariff_index']?.toString(),
@@ -331,9 +335,8 @@ Future<Response> _registerMeterHandler(
   final meter = RegisteredMeter(
     serial: serial,
     identity: identity,
-    encryptionAlgorithm: (body['encryption_algorithm'] ?? 'sta')
-        .toString()
-        .toLowerCase(),
+    encryptionAlgorithm:
+        (body['encryption_algorithm'] ?? 'sta').toString().toLowerCase(),
     subscriberLabel: body['subscriber_label']?.toString(),
     registeredAt: DateTime.now().toUtc(),
   );
@@ -353,8 +356,7 @@ Future<Response> _registerMeterHandler(
       412,
       _envelope(
         code: 412,
-        message:
-            'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
+        message: 'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
             'Create it in the Laravel dashboard before registering this '
             'meter.',
         requestId: requestId,
@@ -753,8 +755,8 @@ Map<String, dynamic> _tokenToJson(Token token) {
     }
     if (token.tokenIdentifier != null) {
       base['token_id_minutes'] = token.tokenIdentifier!.bitString.value;
-      base['token_id_time'] = token.tokenIdentifier!.timeOfIssue
-          .toIso8601String();
+      base['token_id_time'] =
+          token.tokenIdentifier!.timeOfIssue.toIso8601String();
     }
     if (token.randomNo != null) {
       base['random_no'] = token.randomNo!.bitString.value;

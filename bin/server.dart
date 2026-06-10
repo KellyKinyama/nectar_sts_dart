@@ -65,8 +65,8 @@ Future<void> main(List<String> args) async {
   final keyHex = (env['VENDING_KEY_HEX'] ?? _defaultVendingKeyHex).trim();
   final bearer = env['NECTAR_API_TOKEN'];
   final logPath = (env['VENDING_LOG_FILE'] ?? _defaultLogPath).trim();
-  final registryPath = (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath)
-      .trim();
+  final registryPath =
+      (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath).trim();
 
   if (keyHex == _defaultVendingKeyHex) {
     stderr.writeln(
@@ -82,6 +82,8 @@ Future<void> main(List<String> args) async {
   }
 
   final hsm = VirtualHsm(VendingCommonDesKey(parseHexKey(keyHex)));
+  final TokenIssuer issuer = _buildIssuer(env, hsm);
+  stdout.writeln('[info] hsm backend: ${issuer.name}');
 
   final tariffs = TariffBook.fromEnv(env);
   if (tariffs.isEmpty) {
@@ -160,7 +162,7 @@ Future<void> main(List<String> args) async {
   }
 
   final handler = buildApiHandler(
-    hsm,
+    issuer,
     bearerToken: bearer,
     log: log,
     registry: registry,
@@ -189,4 +191,65 @@ Future<void> main(List<String> args) async {
     if (useDb) await Database.close();
     exit(0);
   });
+}
+
+/// Pick a [TokenIssuer] based on `HSM_KIND` env (default `virtual`).
+///
+///   HSM_KIND=virtual  — in-process VirtualHsm (default).
+///   HSM_KIND=prism    — remote Prism HSM via Thrift. Requires
+///                       PRISM_HOST, PRISM_PORT, PRISM_REALM,
+///                       PRISM_USERNAME, PRISM_PASSWORD. Currently a
+///                       stub — every request will fail with
+///                       NotImplementedException until the Dart
+///                       Thrift client is in place.
+TokenIssuer _buildIssuer(Map<String, String> env, VirtualHsm fallback) {
+  final kind = (env['HSM_KIND'] ?? 'virtual').trim().toLowerCase();
+  switch (kind) {
+    case '':
+    case 'virtual':
+      return VirtualHsmIssuer(fallback);
+    case 'prism':
+      final host = env['PRISM_HOST']?.trim();
+      final portStr = env['PRISM_PORT']?.trim();
+      final realm = env['PRISM_REALM']?.trim();
+      final username = env['PRISM_USERNAME']?.trim();
+      final password = env['PRISM_PASSWORD'];
+      if (host == null ||
+          host.isEmpty ||
+          portStr == null ||
+          portStr.isEmpty ||
+          realm == null ||
+          realm.isEmpty ||
+          username == null ||
+          username.isEmpty ||
+          password == null ||
+          password.isEmpty) {
+        throw StateError(
+          'HSM_KIND=prism requires PRISM_HOST, PRISM_PORT, PRISM_REALM, '
+          'PRISM_USERNAME, PRISM_PASSWORD.',
+        );
+      }
+      final port = int.tryParse(portStr);
+      if (port == null) {
+        throw StateError('PRISM_PORT must be an integer, got: $portStr');
+      }
+      stderr.writeln(
+        '[warn] HSM_KIND=prism — PrismIssuer is currently a stub; every '
+        '/v1/tokens request will fail until the Thrift client is wired.',
+      );
+      return PrismIssuer(PrismConfig(
+        host: host,
+        port: port,
+        realm: realm,
+        username: username,
+        password: password,
+        insecureTls:
+            (env['PRISM_INSECURE_TLS'] ?? 'true').trim().toLowerCase() !=
+                'false',
+      ));
+    default:
+      throw StateError(
+        'Unknown HSM_KIND="$kind" — expected "virtual" or "prism".',
+      );
+  }
 }
