@@ -1234,11 +1234,15 @@ void main() {
   // 1 and 2 — see virtual_hsm_dispatch_test.dart). Documented here
   // for parity-suite completeness.
   group('STS_531_1_0_02 CTSA21/CTSA22 (water/gas Class 0)', () {
-    test('parity-skip: water/gas Class 0 not ported in Dart', () {
-      // No-op marker — the rejection path is asserted in
-      // virtual_hsm_dispatch_test.dart.
-      expect(true, isTrue);
-    }, skip: 'Class 0 subclass 1 (water) / 2 (gas) intentionally out of scope.');
+    test(
+      'parity-skip: water/gas Class 0 not ported in Dart',
+      () {
+        // No-op marker — the rejection path is asserted in
+        // virtual_hsm_dispatch_test.dart.
+        expect(true, isTrue);
+      },
+      skip: 'Class 0 subclass 1 (water) / 2 (gas) intentionally out of scope.',
+    );
   });
 
   // ===========================================================
@@ -1341,17 +1345,704 @@ void main() {
         final expected = cases[i][2] as String;
         test('step${i + 1}: MPL=$mpl @ $issuedAt → $expected', () {
           final dk = dkga04Misty1();
-          final token = SetMaximumPowerLimitTokenGenerator(dk, ea11)
-              .buildToken(
-                'request_id',
-                randomNo: _rnd5,
-                tokenIdentifier: _tid(issuedAt),
-                maximumPowerLimit: MaximumPowerLimit(mpl),
-              );
+          final token = SetMaximumPowerLimitTokenGenerator(dk, ea11).buildToken(
+            'request_id',
+            randomNo: _rnd5,
+            tokenIdentifier: _tid(issuedAt),
+            maximumPowerLimit: MaximumPowerLimit(mpl),
+          );
           SetMaximumPowerLimitTokenGenerator(dk, ea11).generate(token);
           expect(token.tokenNo, equals(expected));
         });
       }
     },
   );
+
+  // ===========================================================
+  // STS 531-1 v1.0.04 — remaining electricity vectors
+  // ===========================================================
+  //
+  // Same shared setup as CTSA09/CTSA12 (DKGA-04 + MISTY1, vudk04,
+  // SGC=123457, TI=01, KRN=1, KT=2, PAN=600727…). Helpers reused.
+  //
+  // Skipped from each Java suite:
+  //   - CTSA01 steps 2/3 (water/gas, 1993), 6/7 (water/gas, alt PAN),
+  //     10/11 (water/gas, 2014), 14/15 (water/gas, 2035): electricity
+  //     steps 1, 5, 9, 13 are ported here.
+  //   - CTSA10 steps 10..27 (water/gas amount sweep): only the 9
+  //     electricity vectors are ported.
+  //   - CTSA16 (negative test for InvalidVendingOrDecoderKeyException
+  //     on bad-Luhn PAN under DKGA-04): same parity skip as 1.0.02
+  //     CTSA16 — the matching exception is not raised in Dart.
+
+  group(
+    'STS_531_1_0_04 CTSA01 (TransferElectricityCredit, electricity-only)',
+    () {
+      String genTec({
+        required MeterPrimaryAccountNumber pan,
+        required BaseDate baseDate,
+        required KeyRevisionNumber krn,
+        required DateTime issuedAt,
+        required double amount,
+      }) {
+        final dk = DecoderKeyGeneratorAlgorithm04(
+          baseDate: baseDate,
+          tariffIndex: ti,
+          supplyGroupCode: sgc04,
+          keyType: keyType,
+          keyRevisionNumber: krn,
+          encryptionAlgorithm: ea11,
+          meterPan: pan,
+          vendingKey: vudk04,
+        ).generate();
+        final token = TransferElectricityCreditToken('request_id')
+          ..amountPurchased = Amount(amount)
+          ..tokenIdentifier = TokenIdentifier(baseDate, timeOfIssue: issuedAt)
+          ..randomNo = _rnd5;
+        TransferElectricityCreditTokenGenerator(dk, ea11).generate(token);
+        return token.tokenNo;
+      }
+
+      final altPan = MeterPrimaryAccountNumber.fromString(
+        '000001000000000082',
+        validate: MeterPanValidation.skip,
+      );
+
+      test('step1: 01/03/2004 13:00:00, PAN 600727, KRN=1, 1993 → '
+          '59386323472137426967', () {
+        expect(
+          genTec(
+            pan: pan04,
+            baseDate: BaseDate.date1993,
+            krn: KeyRevisionNumber(1),
+            issuedAt: DateTime.utc(2004, 3, 1, 13, 0, 0),
+            amount: 0.1,
+          ),
+          equals('59386323472137426967'),
+        );
+      });
+
+      test('step5: 01/03/2004 13:20:00, PAN 000001…0082, KRN=1, 1993 → '
+          '25453597494250138964', () {
+        expect(
+          genTec(
+            pan: altPan,
+            baseDate: BaseDate.date1993,
+            krn: KeyRevisionNumber(1),
+            issuedAt: DateTime.utc(2004, 3, 1, 13, 20, 0),
+            amount: 0.1,
+          ),
+          equals('25453597494250138964'),
+        );
+      });
+
+      test('step9: 01/01/2014 08:00:00, PAN 600727, KRN=4, 2014 → '
+          '13444522537517076834', () {
+        expect(
+          genTec(
+            pan: pan04,
+            baseDate: BaseDate.date2014,
+            krn: KeyRevisionNumber(4),
+            issuedAt: DateTime.utc(2014, 1, 1, 8, 0, 0),
+            amount: 0.1,
+          ),
+          equals('13444522537517076834'),
+        );
+      });
+
+      test('step13: 01/01/2035 08:00:00, PAN 600727, KRN=5, 2035 → '
+          '11907826947753213480', () {
+        expect(
+          genTec(
+            pan: pan04,
+            baseDate: BaseDate.date2035,
+            krn: KeyRevisionNumber(5),
+            issuedAt: DateTime.utc(2035, 1, 1, 8, 0, 0),
+            amount: 0.1,
+          ),
+          equals('11907826947753213480'),
+        );
+      });
+    },
+  );
+
+  group(
+    'STS_531_1_0_04 CTSA03 (SetMaximumPowerLimit single via DKGA-04 + MISTY1)',
+    () {
+      test('step1: 28/03/2004 09:01:00, MPL=1000 → 26521936751055502278', () {
+        final dk = dkga04Misty1();
+        final token = SetMaximumPowerLimitTokenGenerator(dk, ea11).buildToken(
+          'request_id',
+          randomNo: _rnd5,
+          tokenIdentifier: _tid(DateTime.utc(2004, 3, 28, 9, 1, 0)),
+          maximumPowerLimit: MaximumPowerLimit(1000),
+        );
+        SetMaximumPowerLimitTokenGenerator(dk, ea11).generate(token);
+        expect(token.tokenNo, equals('26521936751055502278'));
+      });
+    },
+  );
+
+  group('STS_531_1_0_04 CTSA04 (ClearCredit via DKGA-04 + MISTY1)', () {
+    test('step1: 28/03/2004 09:15:00, PAN 600727, reg=0xFFFF → '
+        '59725289138639529749', () {
+      final dk = dkga04Misty1();
+      final token = ClearCreditTokenGenerator(dk, ea11).buildToken(
+        'request_id',
+        randomNo: _rnd5,
+        tokenIdentifier: _tid(DateTime.utc(2004, 3, 28, 9, 15, 0)),
+        register: Register(BitString.fromValue(0xFFFF, 16)),
+      );
+      ClearCreditTokenGenerator(dk, ea11).generate(token);
+      expect(token.tokenNo, equals('59725289138639529749'));
+    });
+
+    test('step2: 28/03/2004 09:16:00, PAN 000001…0082, reg=0xFFFF → '
+        '43917986274716482997', () {
+      final altPan = MeterPrimaryAccountNumber.fromString(
+        '000001000000000082',
+        validate: MeterPanValidation.skip,
+      );
+      final dk = DecoderKeyGeneratorAlgorithm04(
+        baseDate: BaseDate.date1993,
+        tariffIndex: ti,
+        supplyGroupCode: sgc04,
+        keyType: keyType,
+        keyRevisionNumber: KeyRevisionNumber(1),
+        encryptionAlgorithm: ea11,
+        meterPan: altPan,
+        vendingKey: vudk04,
+      ).generate();
+      final token = ClearCreditTokenGenerator(dk, ea11).buildToken(
+        'request_id',
+        randomNo: _rnd5,
+        tokenIdentifier: _tid(DateTime.utc(2004, 3, 28, 9, 16, 0)),
+        register: Register(BitString.fromValue(0xFFFF, 16)),
+      );
+      ClearCreditTokenGenerator(dk, ea11).generate(token);
+      expect(token.tokenNo, equals('43917986274716482997'));
+    });
+  });
+
+  group(
+    'STS_531_1_0_04 CTSA06 (ClearTamperCondition via DKGA-04 + MISTY1)',
+    () {
+      test('step1: 28/03/2004 10:00:00, pad=0x0000 → 02455019196514047304', () {
+        final dk = dkga04Misty1();
+        final token = ClearTamperConditionTokenGenerator(dk, ea11).buildToken(
+          'request_id',
+          randomNo: _rnd5,
+          tokenIdentifier: _tid(DateTime.utc(2004, 3, 28, 10, 0, 0)),
+          pad: Pad(BitString.fromValue(0x0000, 16)),
+        );
+        ClearTamperConditionTokenGenerator(dk, ea11).generate(token);
+        expect(token.tokenNo, equals('02455019196514047304'));
+      });
+    },
+  );
+
+  group(
+    'STS_531_1_0_04 CTSA07 (SetMaximumPhasePowerUnbalanceLimit single)',
+    () {
+      test('step1: 28/03/2004 10:20:00, MPPUL=10 → 16135127146988830614', () {
+        final dk = dkga04Misty1();
+        final token = SetMaximumPhasePowerUnbalanceLimitTokenGenerator(dk, ea11)
+            .buildToken(
+              'request_id',
+              randomNo: _rnd5,
+              tokenIdentifier: _tid(DateTime.utc(2004, 3, 28, 10, 20, 0)),
+              maximumPhasePowerUnbalanceLimit: MaximumPhasePowerUnbalanceLimit(
+                10,
+              ),
+            );
+        SetMaximumPhasePowerUnbalanceLimitTokenGenerator(
+          dk,
+          ea11,
+        ).generate(token);
+        expect(token.tokenNo, equals('16135127146988830614'));
+      });
+    },
+  );
+
+  group('STS_531_1_0_04 CTSA10 (TransferElectricityCredit amount sweep, '
+      'electricity-only)', () {
+    final cases = <List<dynamic>>[
+      [DateTime.utc(2004, 4, 1, 0, 30, 0), 25.6, '63638916334124550935'],
+      [DateTime.utc(2004, 4, 1, 0, 35, 0), 1638.3, '06736163174944595611'],
+      [DateTime.utc(2004, 4, 1, 0, 40, 0), 1638.4, '45798100519745983712'],
+      [DateTime.utc(2004, 4, 1, 0, 45, 0), 2000.0, '08362487434932116862'],
+      [DateTime.utc(2004, 4, 1, 0, 50, 0), 18022.3, '33933484656539803471'],
+      [DateTime.utc(2004, 4, 1, 0, 55, 0), 18022.4, '40075282658655256325'],
+      [DateTime.utc(2004, 4, 1, 1, 44, 0), 181862.3, '00383912203740575049'],
+      [DateTime.utc(2004, 4, 1, 1, 49, 0), 181862.4, '32272089791250978565'],
+      [DateTime.utc(2004, 4, 1, 1, 54, 0), 1820162.4, '44964671935361377806'],
+    ];
+
+    for (var i = 0; i < cases.length; i++) {
+      final issuedAt = cases[i][0] as DateTime;
+      final amount = cases[i][1] as double;
+      final expected = cases[i][2] as String;
+      test('step${i + 1}: $amount kWh @ $issuedAt → $expected', () {
+        final dk = dkga04Misty1();
+        final token = TransferElectricityCreditToken('request_id')
+          ..amountPurchased = Amount(amount)
+          ..tokenIdentifier = _tid(issuedAt)
+          ..randomNo = _rnd5;
+        TransferElectricityCreditTokenGenerator(dk, ea11).generate(token);
+        expect(token.tokenNo, equals(expected));
+      });
+    }
+  });
+
+  group('STS_531_1_0_04 CTSA13 (SetMaximumPhasePowerUnbalanceLimit sweep)', () {
+    final cases = <List<dynamic>>[
+      [DateTime.utc(2004, 4, 1, 8, 0, 0), 256, '23509767215559230954'],
+      [DateTime.utc(2004, 4, 1, 8, 5, 0), 16383, '70247784567899484178'],
+      [DateTime.utc(2004, 4, 1, 8, 10, 0), 16384, '36304916073545542570'],
+      [DateTime.utc(2004, 4, 1, 8, 15, 0), 20000, '11066406403853302811'],
+      [DateTime.utc(2004, 4, 1, 8, 20, 0), 180223, '25512033356036953640'],
+      [DateTime.utc(2004, 4, 1, 8, 25, 0), 180224, '13785431682542358258'],
+      [DateTime.utc(2004, 4, 1, 8, 30, 0), 1818623, '06889958680004063872'],
+      [DateTime.utc(2004, 4, 1, 8, 35, 0), 1818624, '27410125084608663818'],
+      [DateTime.utc(2004, 4, 1, 8, 40, 0), 18201624, '60786080230724485517'],
+    ];
+
+    for (var i = 0; i < cases.length; i++) {
+      final issuedAt = cases[i][0] as DateTime;
+      final mppul = cases[i][1] as int;
+      final expected = cases[i][2] as String;
+      test('step${i + 1}: MPPUL=$mppul @ $issuedAt → $expected', () {
+        final dk = dkga04Misty1();
+        final token = SetMaximumPhasePowerUnbalanceLimitTokenGenerator(dk, ea11)
+            .buildToken(
+              'request_id',
+              randomNo: _rnd5,
+              tokenIdentifier: _tid(issuedAt),
+              maximumPhasePowerUnbalanceLimit: MaximumPhasePowerUnbalanceLimit(
+                mppul,
+              ),
+            );
+        SetMaximumPhasePowerUnbalanceLimitTokenGenerator(
+          dk,
+          ea11,
+        ).generate(token);
+        expect(token.tokenNo, equals(expected));
+      });
+    }
+  });
+
+  group('STS_531_1_0_04 CTSA14 (ClearCredit register sweep)', () {
+    final cases = <List<dynamic>>[
+      [DateTime.utc(2004, 4, 1, 9, 0, 0), 0x0, '06768431134031257922'],
+      [DateTime.utc(2004, 4, 1, 9, 5, 0), 0xFFFF, '59338638600207707879'],
+      [DateTime.utc(2004, 4, 1, 9, 10, 0), 0x4, '48872720007959408665'],
+      [DateTime.utc(2004, 4, 1, 9, 15, 0), 0x5, '51810809087550125677'],
+      [DateTime.utc(2004, 4, 1, 9, 20, 0), 0x6, '13848051316848177124'],
+      [DateTime.utc(2004, 4, 1, 9, 25, 0), 0x7, '63506294564247105352'],
+    ];
+
+    for (var i = 0; i < cases.length; i++) {
+      final issuedAt = cases[i][0] as DateTime;
+      final reg = cases[i][1] as int;
+      final expected = cases[i][2] as String;
+      test('step${i + 1}: register=0x${reg.toRadixString(16)} @ $issuedAt → '
+          '$expected', () {
+        final dk = dkga04Misty1();
+        final token = ClearCreditTokenGenerator(dk, ea11).buildToken(
+          'request_id',
+          randomNo: _rnd5,
+          tokenIdentifier: _tid(issuedAt),
+          register: Register(BitString.fromValue(reg, 16)),
+        );
+        ClearCreditTokenGenerator(dk, ea11).generate(token);
+        expect(token.tokenNo, equals(expected));
+      });
+    }
+  });
+
+  group('STS_531_1_0_04 CTSA05 (4-section KCT via DKGA-04 + MISTY1)', () {
+    DecoderKey mkDk({
+      required BaseDate baseDate,
+      required String ti,
+      required KeyRevisionNumber krn,
+      MeterPrimaryAccountNumber? pan,
+    }) {
+      return DecoderKeyGeneratorAlgorithm04(
+        baseDate: baseDate,
+        tariffIndex: TariffIndex(ti),
+        supplyGroupCode: sgc04,
+        keyType: keyType,
+        keyRevisionNumber: krn,
+        encryptionAlgorithm: ea11,
+        meterPan: pan ?? pan04,
+        vendingKey: vudk04,
+      ).generate();
+    }
+
+    final kenhoFF = KeyExpiryNumberHighOrder(BitString.fromValue(0xF, 4));
+    final kenloFF = KeyExpiryNumberLowOrder(BitString.fromValue(0xF, 4));
+
+    // -------- step 1: initial TI=01/KRN=1, new TI=02/KRN=1, rollover=false
+    test('step1 Set1st: initTI=01 → newTI=02 → 34812744915211133004', () {
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '02',
+        krn: KeyRevisionNumber(1),
+      );
+      final tok = Set1stSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberHighOrder: kenhoFF,
+        keyRevisionNumber: KeyRevisionNumber(1),
+        rolloverKeyChange: RolloverKeyChange.fromBool(false),
+        keyType: keyType,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('34812744915211133004'));
+    });
+
+    test('step1 Set2nd: newTI=02 → 46903925208523674737', () {
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '02',
+        krn: KeyRevisionNumber(1),
+      );
+      final tok = Set2ndSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberLowOrder: kenloFF,
+        tariffIndex: TariffIndex('02'),
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('46903925208523674737'));
+    });
+
+    test('step1 Set3rd: SGC=123457 → 71464563847088610152', () {
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '02',
+        krn: KeyRevisionNumber(1),
+      );
+      final tok = Set3rdSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        supplyGroupCode: sgc04,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('71464563847088610152'));
+    });
+
+    test('step1 Set4th: SGC=123457 → 67904239402617643990', () {
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '02',
+        krn: KeyRevisionNumber(1),
+      );
+      final tok = Set4thSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        supplyGroupCode: sgc04,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('67904239402617643990'));
+    });
+
+    // -------- step 2: rollover=true, newKRN=4, newBaseDate=2014
+    // initialKey stays 1993/01/KRN=1 (JUnit @Before reset)
+    test('step2 Set1st (rollover=true, newKRN=4, 2014) → '
+        '56493341861242437581', () {
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date2014,
+        ti: '02',
+        krn: KeyRevisionNumber(4),
+      );
+      final tok = Set1stSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberHighOrder: kenhoFF,
+        keyRevisionNumber: KeyRevisionNumber(4),
+        rolloverKeyChange: RolloverKeyChange.fromBool(true),
+        keyType: keyType,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('56493341861242437581'));
+    });
+
+    test('step2 Set2nd (newKRN=4, 2014) → 51757380361191578258', () {
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date2014,
+        ti: '02',
+        krn: KeyRevisionNumber(4),
+      );
+      final tok = Set2ndSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberLowOrder: kenloFF,
+        tariffIndex: TariffIndex('02'),
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('51757380361191578258'));
+    });
+
+    // -------- step 3: alt PAN 000001…0082 (changeMeterPANValue), baseDate
+    // reset to 1993 by @Before, newKRN reset to 1, newTI='02'
+    test('step3 Set1st (altPan, TI=02, KRN=1) → 29594465524699505864', () {
+      final altPan = MeterPrimaryAccountNumber.fromString(
+        '000001000000000082',
+        validate: MeterPanValidation.skip,
+      );
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+        pan: altPan,
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '02',
+        krn: KeyRevisionNumber(1),
+        pan: altPan,
+      );
+      final tok = Set1stSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberHighOrder: kenhoFF,
+        keyRevisionNumber: KeyRevisionNumber(1),
+        rolloverKeyChange: RolloverKeyChange.fromBool(false),
+        keyType: keyType,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('29594465524699505864'));
+    });
+
+    test('step3 Set2nd (altPan, TI=02) → 09506536067814156547', () {
+      final altPan = MeterPrimaryAccountNumber.fromString(
+        '000001000000000082',
+        validate: MeterPanValidation.skip,
+      );
+      final initDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '01',
+        krn: KeyRevisionNumber(1),
+        pan: altPan,
+      );
+      final newDk = mkDk(
+        baseDate: BaseDate.date1993,
+        ti: '02',
+        krn: KeyRevisionNumber(1),
+        pan: altPan,
+      );
+      final tok = Set2ndSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberLowOrder: kenloFF,
+        tariffIndex: TariffIndex('02'),
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(tok.tokenNo, equals('09506536067814156547'));
+    });
+  });
+
+  group('STS_531_1_0_04 CTSA19 (4-section KCT + TEC via DKGA-04 + MISTY1)', () {
+    DecoderKey mkDk({
+      required String ti,
+      required KeyRevisionNumber krn,
+      SupplyGroupCode? sgc,
+    }) {
+      return DecoderKeyGeneratorAlgorithm04(
+        baseDate: BaseDate.date1993,
+        tariffIndex: TariffIndex(ti),
+        supplyGroupCode: sgc ?? sgc04,
+        keyType: keyType,
+        keyRevisionNumber: krn,
+        encryptionAlgorithm: ea11,
+        meterPan: pan04,
+        vendingKey: vudk04,
+      ).generate();
+    }
+
+    final kenhoFF = KeyExpiryNumberHighOrder(BitString.fromValue(0xF, 4));
+    final kenloFF = KeyExpiryNumberLowOrder(BitString.fromValue(0xF, 4));
+
+    void assertFiveSections({
+      required DecoderKey initDk,
+      required DecoderKey newDk,
+      required KeyRevisionNumber newKrnForFirstSection,
+      required TariffIndex tiForSecondSection,
+      required SupplyGroupCode sgcForThirdSection,
+      required SupplyGroupCode sgcForFourthSection,
+      required KeyExpiryNumberHighOrder kenho,
+      required KeyExpiryNumberLowOrder kenlo,
+      required DateTime issuedAt,
+      required String expected1st,
+      required String expected2nd,
+      required String expected3rd,
+      required String expected4th,
+      required String expectedTec,
+    }) {
+      final t1 = Set1stSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberHighOrder: kenho,
+        keyRevisionNumber: newKrnForFirstSection,
+        rolloverKeyChange: RolloverKeyChange.fromBool(false),
+        keyType: keyType,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(t1.tokenNo, equals(expected1st), reason: 'Set1st');
+
+      final t2 = Set2ndSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        keyExpiryNumberLowOrder: kenlo,
+        tariffIndex: tiForSecondSection,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(t2.tokenNo, equals(expected2nd), reason: 'Set2nd');
+
+      final t3 = Set3rdSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        supplyGroupCode: sgcForThirdSection,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(t3.tokenNo, equals(expected3rd), reason: 'Set3rd');
+
+      final t4 = Set4thSectionDecoderKeyTokenGenerator(
+        decoderKey: initDk,
+        encryptionAlgorithm: ea11,
+        supplyGroupCode: sgcForFourthSection,
+        newDecoderKey: newDk,
+      ).generateNew('request_id');
+      expect(t4.tokenNo, equals(expected4th), reason: 'Set4th');
+
+      // TEC uses the NEW decoder key.
+      final tecToken = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = TokenIdentifier(
+          BaseDate.date1993,
+          timeOfIssue: issuedAt,
+        )
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(newDk, ea11).generate(tecToken);
+      expect(tecToken.tokenNo, equals(expectedTec), reason: 'TEC');
+    }
+
+    test('step1: initTI=01, newTI=02, KRN=1, KEN=255 @ 01/04/2004 10:00', () {
+      final initDk = mkDk(ti: '01', krn: KeyRevisionNumber(1));
+      final newDk = mkDk(ti: '02', krn: KeyRevisionNumber(1));
+      assertFiveSections(
+        initDk: initDk,
+        newDk: newDk,
+        newKrnForFirstSection: KeyRevisionNumber(1),
+        tiForSecondSection: TariffIndex('02'),
+        sgcForThirdSection: sgc04,
+        sgcForFourthSection: sgc04,
+        kenho: kenhoFF,
+        kenlo: kenloFF,
+        issuedAt: DateTime.utc(2004, 4, 1, 10, 0, 0),
+        expected1st: '34812744915211133004',
+        expected2nd: '46903925208523674737',
+        expected3rd: '71464563847088610152',
+        expected4th: '67904239402617643990',
+        expectedTec: '52522044994700766563',
+      );
+    });
+
+    test('step2: initTI=01/KRN=1, newTI=01/newKRN=2 @ 01/04/2004 10:10', () {
+      final initDk = mkDk(ti: '01', krn: KeyRevisionNumber(1));
+      final newDk = mkDk(ti: '01', krn: KeyRevisionNumber(2));
+      assertFiveSections(
+        initDk: initDk,
+        newDk: newDk,
+        newKrnForFirstSection: KeyRevisionNumber(2),
+        tiForSecondSection: TariffIndex('01'),
+        sgcForThirdSection: sgc04,
+        sgcForFourthSection: sgc04,
+        kenho: kenhoFF,
+        kenlo: kenloFF,
+        issuedAt: DateTime.utc(2004, 4, 1, 10, 10, 0),
+        expected1st: '40937788669556693706',
+        expected2nd: '55900126766830063715',
+        expected3rd: '70168064023104948668',
+        expected4th: '31051353433275215300',
+        expectedTec: '10334212364124071208',
+      );
+    });
+
+    test('step3: initKRN=2, newKRN=7, KEN=170 @ 01/04/2004 10:15', () {
+      final initDk = mkDk(ti: '01', krn: KeyRevisionNumber(2));
+      final newDk = mkDk(ti: '01', krn: KeyRevisionNumber(7));
+      final kenho170 = KeyExpiryNumberHighOrder(BitString.fromValue(0xA, 4));
+      final kenlo170 = KeyExpiryNumberLowOrder(BitString.fromValue(0xA, 4));
+      assertFiveSections(
+        initDk: initDk,
+        newDk: newDk,
+        newKrnForFirstSection: KeyRevisionNumber(7),
+        tiForSecondSection: TariffIndex('01'),
+        sgcForThirdSection: sgc04,
+        sgcForFourthSection: sgc04,
+        kenho: kenho170,
+        kenlo: kenlo170,
+        issuedAt: DateTime.utc(2004, 4, 1, 10, 15, 0),
+        expected1st: '65626097193581652906',
+        expected2nd: '45273086784967754458',
+        expected3rd: '60343449063848563711',
+        expected4th: '62570694794795906368',
+        expectedTec: '06390659512322397973',
+      );
+    });
+
+    test('step4: initSGC=123457, newSGC=123461, KRN=1 @ 01/04/2004 10:20', () {
+      final newSgc = SupplyGroupCode('123461');
+      final initDk = mkDk(ti: '01', krn: KeyRevisionNumber(1));
+      final newDk = mkDk(ti: '01', krn: KeyRevisionNumber(1), sgc: newSgc);
+      assertFiveSections(
+        initDk: initDk,
+        newDk: newDk,
+        newKrnForFirstSection: KeyRevisionNumber(1),
+        tiForSecondSection: TariffIndex('01'),
+        sgcForThirdSection: newSgc,
+        sgcForFourthSection: newSgc,
+        kenho: kenhoFF,
+        kenlo: kenloFF,
+        issuedAt: DateTime.utc(2004, 4, 1, 10, 20, 0),
+        expected1st: '14459740122691785207',
+        expected2nd: '16084994560056931733',
+        expected3rd: '38603700611597183668',
+        expected4th: '07926972461094669048',
+        expectedTec: '22571219105476013350',
+      );
+    });
+  });
 }
