@@ -36,11 +36,11 @@ SocketFactory tlsSocketFactory({
   Duration? timeout,
 }) {
   return () => SecureSocket.connect(
-        host,
-        port,
-        timeout: timeout,
-        onBadCertificate: insecureTls ? (_) => true : null,
-      );
+    host,
+    port,
+    timeout: timeout,
+    onBadCertificate: insecureTls ? (_) => true : null,
+  );
 }
 
 /// One connection to a Thrift server using binary protocol on top

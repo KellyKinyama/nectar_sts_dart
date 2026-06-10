@@ -174,74 +174,72 @@ void main() {
       );
     });
 
-    test('issueCreditToken decodes a single Credit:Electricity token',
-        () async {
-      final server = await _FakeThriftServer.bind({
-        'issueCreditToken': (call, args) {
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('issueCreditToken', TMessageType.reply, call.seqId),
-          );
-          // Result struct: field 0 = success = list<PrismToken>.
-          w.writeFieldBegin(TType.list, 0);
-          w.writeListBegin(TType.struct, 1);
-          // One PrismToken — only the fields the issuer reads.
-          w.writeFieldBegin(TType.string, 1); // drn
-          w.writeString('12345678901234');
-          w.writeFieldBegin(TType.i32, 12); // tid
-          w.writeI32(98765);
-          w.writeFieldBegin(TType.string, 20); // description
-          w.writeString('Credit:Electricity');
-          w.writeFieldBegin(TType.string, 22); // scaledAmount
-          w.writeString('0.5');
-          w.writeFieldBegin(TType.string, 30); // tokenDec
-          w.writeString('12345678901234567890');
-          w.writeFieldStop(); // end PrismToken
-          w.writeFieldStop(); // end result struct
-          return w.takeBytes();
-        },
-      });
-      addTearDown(server.close);
+    test(
+      'issueCreditToken decodes a single Credit:Electricity token',
+      () async {
+        final server = await _FakeThriftServer.bind({
+          'issueCreditToken': (call, args) {
+            final w = BinaryWriter();
+            w.writeMessageBegin(
+              TMessage('issueCreditToken', TMessageType.reply, call.seqId),
+            );
+            // Result struct: field 0 = success = list<PrismToken>.
+            w.writeFieldBegin(TType.list, 0);
+            w.writeListBegin(TType.struct, 1);
+            // One PrismToken — only the fields the issuer reads.
+            w.writeFieldBegin(TType.string, 1); // drn
+            w.writeString('12345678901234');
+            w.writeFieldBegin(TType.i32, 12); // tid
+            w.writeI32(98765);
+            w.writeFieldBegin(TType.string, 20); // description
+            w.writeString('Credit:Electricity');
+            w.writeFieldBegin(TType.string, 22); // scaledAmount
+            w.writeString('0.5');
+            w.writeFieldBegin(TType.string, 30); // tokenDec
+            w.writeString('12345678901234567890');
+            w.writeFieldStop(); // end PrismToken
+            w.writeFieldStop(); // end result struct
+            return w.takeBytes();
+          },
+        });
+        addTearDown(server.close);
 
-      final client = await TokenApiClient.connect(server.socketFactory);
-      addTearDown(client.close);
+        final client = await TokenApiClient.connect(server.socketFactory);
+        addTearDown(client.close);
 
-      final tokens = await client.issueCreditToken(
-        messageId: 'r',
-        accessToken: 'jwt',
-        meterConfig: const MeterConfigIn(
-          drn: '12345678901234',
-          ea: 7,
-          tct: 1,
-          sgc: 123456,
-          krn: 1,
-          ti: 1,
-          ken: 0,
-        ),
-        subclass: 0,
-        transferAmount: 5.0,
-        tokenTime: 0,
-      );
+        final tokens = await client.issueCreditToken(
+          messageId: 'r',
+          accessToken: 'jwt',
+          meterConfig: const MeterConfigIn(
+            drn: '12345678901234',
+            ea: 7,
+            tct: 1,
+            sgc: 123456,
+            krn: 1,
+            ti: 1,
+            ken: 0,
+          ),
+          subclass: 0,
+          transferAmount: 5.0,
+          tokenTime: 0,
+        );
 
-      expect(tokens, hasLength(1));
-      final t = tokens.single;
-      expect(t.description, 'Credit:Electricity');
-      expect(t.scaledAmount, '0.5');
-      expect(t.tokenDec, '12345678901234567890');
-      expect(t.tid, 98765);
-      expect(t.drn, '12345678901234');
-    });
+        expect(tokens, hasLength(1));
+        final t = tokens.single;
+        expect(t.description, 'Credit:Electricity');
+        expect(t.scaledAmount, '0.5');
+        expect(t.tokenDec, '12345678901234567890');
+        expect(t.tid, 98765);
+        expect(t.drn, '12345678901234');
+      },
+    );
 
     test('TApplicationException reply is surfaced as exception', () async {
       final server = await _FakeThriftServer.bind({
         'signInWithPassword': (call, args) {
           final w = BinaryWriter();
           w.writeMessageBegin(
-            TMessage(
-              'signInWithPassword',
-              TMessageType.exception,
-              call.seqId,
-            ),
+            TMessage('signInWithPassword', TMessageType.exception, call.seqId),
           );
           // TApplicationException { message(1 STRING), type(2 I32) }
           w.writeFieldBegin(TType.string, 1);
@@ -266,6 +264,106 @@ void main() {
         ),
         throwsA(isA<TApplicationException>()),
       );
+    });
+
+    test('verifyToken returns Valid + decoded PrismToken on happy path',
+        () async {
+      final server = await _FakeThriftServer.bind({
+        'verifyToken': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('verifyToken', TMessageType.reply, call.seqId),
+          );
+          // Result struct: field 0 = success = VerifyResult struct.
+          w.writeFieldBegin(TType.struct, 0);
+          // VerifyResult { validationResult(1), token(2 STRUCT) }
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('Valid');
+          w.writeFieldBegin(TType.struct, 2);
+          // Inline PrismToken — only the fields the issuer reads back.
+          w.writeFieldBegin(TType.string, 1); // drn
+          w.writeString('56000000001');
+          w.writeFieldBegin(TType.i32, 12); // tid
+          w.writeI32(424242);
+          w.writeFieldBegin(TType.string, 20); // description
+          w.writeString('Credit:Electricity');
+          w.writeFieldBegin(TType.string, 22); // scaledAmount
+          w.writeString('1.5');
+          w.writeFieldBegin(TType.string, 30); // tokenDec
+          w.writeString('98765432109876543210');
+          w.writeFieldStop(); // end PrismToken
+          w.writeFieldStop(); // end VerifyResult
+          w.writeFieldStop(); // end result struct
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      final res = await client.verifyToken(
+        messageId: 'r',
+        accessToken: 'jwt',
+        meterConfig: const MeterConfigIn(
+          drn: '56000000001',
+          ea: 7,
+          tct: 1,
+          sgc: 123456,
+          krn: 1,
+          ti: 1,
+          ken: 0,
+        ),
+        tokenDec: '98765432109876543210',
+      );
+
+      expect(res.isValid, isTrue);
+      expect(res.validationResult, 'Valid');
+      expect(res.token, isNotNull);
+      expect(res.token!.tid, 424242);
+      expect(res.token!.scaledAmount, '1.5');
+      expect(res.token!.tokenDec, '98765432109876543210');
+    });
+
+    test('verifyToken with non-Valid result still returns the struct',
+        () async {
+      final server = await _FakeThriftServer.bind({
+        'verifyToken': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('verifyToken', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('Invalid');
+          w.writeFieldStop(); // end VerifyResult (no token field)
+          w.writeFieldStop(); // end result struct
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      final res = await client.verifyToken(
+        messageId: 'r',
+        accessToken: 'jwt',
+        meterConfig: const MeterConfigIn(
+          drn: '56000000001',
+          ea: 7,
+          tct: 1,
+          sgc: 123456,
+          krn: 1,
+          ti: 1,
+          ken: 0,
+        ),
+        tokenDec: '00000000000000000000',
+      );
+
+      expect(res.isValid, isFalse);
+      expect(res.validationResult, 'Invalid');
+      expect(res.token, isNull);
     });
   });
 }

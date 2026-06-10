@@ -40,10 +40,7 @@ abstract class TokenIssuer {
 
   /// Issue a token from a flat param map. Returns the issued
   /// [Token] with `tokenNo` populated.
-  FutureOr<Token> generateToken(
-    String requestId,
-    Map<String, dynamic> params,
-  );
+  FutureOr<Token> generateToken(String requestId, Map<String, dynamic> params);
 
   /// Decode a previously-issued 20-digit token using the same
   /// params that were used to mint it.
@@ -190,15 +187,53 @@ class PrismIssuer implements TokenIssuer {
   }
 
   @override
-  FutureOr<Token> decodeToken(
+  Future<Token> decodeToken(
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) {
-    throw const NotImplementedException(
-      'PrismIssuer.decodeToken is not wired yet. Prism exposes '
-      'verifyToken for this; add it to TokenApiClient when needed.',
-    );
+  ) async {
+    final tokenClass = params[VirtualHsmParams.tokenClass]?.toString();
+    final subclass = params[VirtualHsmParams.tokenSubclass]?.toString() ?? '0';
+    if (tokenClass != '0' || subclass != '0') {
+      throw NotImplementedException(
+        'PrismIssuer.decodeToken: only class 0 / subclass 0 '
+        '(electricity credit) is wired through to Prism today. '
+        'Got class=$tokenClass subclass=$subclass.',
+      );
+    }
+
+    final meterConfig = _meterConfigFromParams(params);
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      final result = await client.verifyToken(
+        messageId: requestId,
+        accessToken: accessToken,
+        meterConfig: meterConfig,
+        tokenDec: tokenNo,
+      );
+      if (!result.isValid) {
+        throw NotImplementedException(
+          'PrismIssuer.decodeToken: Prism rejected the token '
+          '(validationResult="${result.validationResult}").',
+        );
+      }
+      final pt = result.token;
+      if (pt == null) {
+        throw const NotImplementedException(
+          'PrismIssuer.decodeToken: Prism returned isValid but no '
+          'decoded Token struct.',
+        );
+      }
+      return _toDartToken(requestId, pt, params);
+    } finally {
+      await client.close();
+    }
   }
 
   // ---- helpers ----------------------------------------------------

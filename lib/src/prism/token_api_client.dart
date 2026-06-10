@@ -309,6 +309,40 @@ class TokenIssueFlags {
   static const int specialReserved = 4;
 }
 
+/// `VerifyResult` — what `verifyToken` returns.
+///
+/// Fields (verbatim from the Java IDL):
+///   - `validationResult` (1 STRING) — typically `"Valid"` on success.
+///   - `token` (2 STRUCT) — the decoded credit/MSE token; absent for
+///     non-token validations (in which case [token] is `null`).
+///   - `meterTestToken` (3 STRUCT) — only set for NMSE results;
+///     ignored / skipped here.
+class VerifyResult {
+  final String validationResult;
+  final PrismToken? token;
+
+  const VerifyResult({required this.validationResult, this.token});
+
+  bool get isValid => validationResult.toLowerCase() == 'valid';
+
+  static VerifyResult readFrom(BinaryReader r) {
+    String validationResult = '';
+    PrismToken? token;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 1 && type == TType.string) {
+        validationResult = r.readString();
+      } else if (id == 2 && type == TType.struct) {
+        token = PrismToken.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    return VerifyResult(validationResult: validationResult, token: token);
+  }
+}
+
 // ---- Client ---------------------------------------------------------
 
 /// Stateful Prism TokenApi client. One instance per concurrent
@@ -424,7 +458,7 @@ class TokenApiClient {
           );
         }
         success = <PrismToken>[
-          for (var i = 0; i < n; i++) PrismToken.readFrom(r)
+          for (var i = 0; i < n; i++) PrismToken.readFrom(r),
         ];
       } else if (id == 1 && type == TType.struct) {
         ex = PrismApiException.readFrom(r);
@@ -442,10 +476,64 @@ class TokenApiClient {
     return success;
   }
 
+  // -- verifyToken --------------------------------------------------
+
+  /// Decode / validate a 20-digit decimal token against a meter
+  /// configuration.
+  ///
+  /// Returns the [VerifyResult] verbatim — callers decide what to do
+  /// with `validationResult` (e.g. throw if not `"Valid"`).
+  Future<VerifyResult> verifyToken({
+    required String messageId,
+    required String accessToken,
+    required MeterConfigIn meterConfig,
+    required String tokenDec,
+  }) async {
+    final w = BinaryWriter();
+    final seq = ++_seq;
+    w.writeMessageBegin(TMessage('verifyToken', TMessageType.call, seq));
+    // args: messageId(1) accessToken(2) meterConfig(3) tokenDec(4)
+    w.writeFieldBegin(TType.string, 1);
+    w.writeString(messageId);
+    w.writeFieldBegin(TType.string, 2);
+    w.writeString(accessToken);
+    w.writeFieldBegin(TType.struct, 3);
+    meterConfig.writeTo(w);
+    w.writeFieldBegin(TType.string, 4);
+    w.writeString(tokenDec);
+    w.writeFieldStop();
+    await _t.writeFrame(w.takeBytes());
+
+    final r = await _readReplyStruct('verifyToken', seq);
+    VerifyResult? success;
+    PrismApiException? ex;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 0 && type == TType.struct) {
+        success = VerifyResult.readFrom(r);
+      } else if (id == 1 && type == TType.struct) {
+        ex = PrismApiException.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    if (ex != null) throw ex;
+    if (success == null) {
+      throw const TApplicationException(
+        TApplicationException.missingResult,
+        'verifyToken: success field missing',
+      );
+    }
+    return success;
+  }
+
   // -- shared reply scaffolding -------------------------------------
 
   Future<BinaryReader> _readReplyStruct(
-      String expectedName, int expectedSeq) async {
+    String expectedName,
+    int expectedSeq,
+  ) async {
     final frame = await _t.readFrame();
     final r = BinaryReader(frame);
     final hdr = r.readMessageBegin();

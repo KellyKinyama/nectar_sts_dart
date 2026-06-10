@@ -158,4 +158,135 @@ void main() {
       throwsA(predicate((e) => e.toString().contains('class 0 / subclass 0'))),
     );
   });
+
+  test(
+      'PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
+      'a TransferElectricityCreditToken', () async {
+    final server = await _FakeServer.bind({
+      'signInWithPassword': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('jwt-decode');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+      'verifyToken': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('verifyToken', TMessageType.reply, call.seqId),
+        );
+        // Result struct: success VerifyResult.
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('Valid');
+        w.writeFieldBegin(TType.struct, 2);
+        // PrismToken — only the fields the issuer reads.
+        w.writeFieldBegin(TType.string, 1); // drn
+        w.writeString('56000000001');
+        w.writeFieldBegin(TType.i32, 12); // tid
+        w.writeI32(2024);
+        w.writeFieldBegin(TType.string, 20);
+        w.writeString('Credit:Electricity');
+        w.writeFieldBegin(TType.string, 22);
+        w.writeString('7.5');
+        w.writeFieldBegin(TType.string, 30);
+        w.writeString('11122233344455566677');
+        w.writeFieldStop(); // PrismToken
+        w.writeFieldStop(); // VerifyResult
+        w.writeFieldStop(); // result struct
+        return w.takeBytes();
+      },
+    });
+    addTearDown(server.close);
+
+    final issuer = PrismIssuer.forTesting(
+      const PrismConfig(
+        host: '127.0.0.1',
+        port: 0,
+        realm: 'STS',
+        username: 'vendor',
+        password: 'pw',
+      ),
+      server.socketFactory,
+    );
+
+    final decoded = await issuer.decodeToken(
+      'req-decode-1',
+      '11122233344455566677',
+      {
+        VirtualHsmParams.tokenClass: '0',
+        VirtualHsmParams.tokenSubclass: '0',
+        VirtualHsmParams.decoderReferenceNumber: '56000000001',
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '1',
+        VirtualHsmParams.keyRevisionNo: '1',
+        VirtualHsmParams.encryptionAlgorithm: 'sta',
+      },
+    );
+
+    expect(decoded, isA<TransferElectricityCreditToken>());
+    final t = decoded as TransferElectricityCreditToken;
+    expect(t.tokenNo, '11122233344455566677');
+    expect(t.amountPurchased!.unitsPurchased, 7.5);
+    expect(t.tokenIdentifier!.bitString.value, 2024);
+  });
+
+  test('PrismIssuer.decodeToken throws when Prism returns Invalid', () async {
+    final server = await _FakeServer.bind({
+      'signInWithPassword': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('jwt-bad');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+      'verifyToken': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('verifyToken', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('Invalid');
+        w.writeFieldStop(); // VerifyResult (no token)
+        w.writeFieldStop(); // result struct
+        return w.takeBytes();
+      },
+    });
+    addTearDown(server.close);
+
+    final issuer = PrismIssuer.forTesting(
+      const PrismConfig(
+        host: '127.0.0.1',
+        port: 0,
+        realm: 'STS',
+        username: 'u',
+        password: 'p',
+      ),
+      server.socketFactory,
+    );
+
+    await expectLater(
+      issuer.decodeToken('req-bad', '00000000000000000000', {
+        VirtualHsmParams.tokenClass: '0',
+        VirtualHsmParams.tokenSubclass: '0',
+        VirtualHsmParams.decoderReferenceNumber: '56000000001',
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '1',
+        VirtualHsmParams.keyRevisionNo: '1',
+        VirtualHsmParams.encryptionAlgorithm: 'sta',
+      }),
+      throwsA(predicate((e) => e.toString().contains('Invalid'))),
+    );
+  });
 }
