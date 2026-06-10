@@ -55,22 +55,21 @@ class Tariff {
   double moneyFor(double kwh) => kwh * pricePerKwh + adminFee;
 
   Map<String, dynamic> toJson() => {
-    'currency': currency,
-    'price_per_kwh': pricePerKwh,
-    if (adminFee != 0.0) 'admin_fee': adminFee,
-  };
+        'currency': currency,
+        'price_per_kwh': pricePerKwh,
+        if (adminFee != 0.0) 'admin_fee': adminFee,
+      };
 
   factory Tariff.fromJson(Map<String, dynamic> j) => Tariff(
-    currency: (j['currency'] as String).toUpperCase(),
-    pricePerKwh: _asDouble(j['price_per_kwh'], 'price_per_kwh'),
-    adminFee: j['admin_fee'] == null
-        ? 0.0
-        : _asDouble(j['admin_fee'], 'admin_fee'),
-  );
+        currency: (j['currency'] as String).toUpperCase(),
+        pricePerKwh: _asDouble(j['price_per_kwh'], 'price_per_kwh'),
+        adminFee: j['admin_fee'] == null
+            ? 0.0
+            : _asDouble(j['admin_fee'], 'admin_fee'),
+      );
 
   @override
-  String toString() =>
-      'Tariff(currency: $currency, pricePerKwh: $pricePerKwh, '
+  String toString() => 'Tariff(currency: $currency, pricePerKwh: $pricePerKwh, '
       'adminFee: $adminFee)';
 }
 
@@ -80,7 +79,7 @@ class TariffBook {
   final Tariff? fallback;
 
   TariffBook({Map<String, Tariff>? byTariffIndex, this.fallback})
-    : _byIndex = Map.unmodifiable(byTariffIndex ?? const <String, Tariff>{});
+      : _byIndex = Map.unmodifiable(byTariffIndex ?? const <String, Tariff>{});
 
   /// `true` when the book has neither a per-index entry nor a
   /// fallback. The server treats an empty book as "no money math".
@@ -168,14 +167,14 @@ class PricingBreakdown {
   });
 
   Map<String, dynamic> toJson() => {
-    'tariff_index': tariffIndex,
-    'currency': currency,
-    'price_per_kwh': pricePerKwh,
-    if (adminFee != 0.0) 'admin_fee': adminFee,
-    'kwh': kwh,
-    'amount_money': amountMoney,
-    'total_money': total,
-  };
+        'tariff_index': tariffIndex,
+        'currency': currency,
+        'price_per_kwh': pricePerKwh,
+        if (adminFee != 0.0) 'admin_fee': adminFee,
+        'kwh': kwh,
+        'amount_money': amountMoney,
+        'total_money': total,
+      };
 }
 
 double _asDouble(Object? v, String fieldName) {

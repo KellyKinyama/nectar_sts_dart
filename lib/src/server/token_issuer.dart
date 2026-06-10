@@ -49,6 +49,13 @@ abstract class TokenIssuer {
     String tokenNo,
     Map<String, dynamic> params,
   );
+
+  /// Liveness probe for the underlying backend. The HTTP layer
+  /// surfaces this on `GET /v1/health/backend` — a healthy result
+  /// returns 200, an unhealthy one returns 503. Default impl just
+  /// reports the issuer name; remote-backed issuers should override.
+  FutureOr<Map<String, Object?>> checkBackend() =>
+      {'ok': true, 'backend': name};
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -71,7 +78,14 @@ class VirtualHsmIssuer implements TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) => hsm.decodeToken(requestId, tokenNo, params);
+  ) =>
+      hsm.decodeToken(requestId, tokenNo, params);
+
+  @override
+  Future<Map<String, Object?>> checkBackend() async => {
+        'ok': true,
+        'backend': name,
+      };
 }
 
 /// Connection parameters for a remote Prism HSM. Mirrors the
@@ -122,7 +136,7 @@ class PrismIssuer implements TokenIssuer {
   /// Test-only ctor: inject an in-process plain-TCP factory so the
   /// fake Thrift server in `test/prism/` doesn't need certificates.
   PrismIssuer.forTesting(this.config, SocketFactory socketFactory)
-    : _socketFactoryOverride = socketFactory;
+      : _socketFactoryOverride = socketFactory;
 
   @override
   String get name => 'PrismIssuer(${config.host}:${config.port})';
@@ -235,6 +249,34 @@ class PrismIssuer implements TokenIssuer {
     }
   }
 
+  @override
+  Future<Map<String, Object?>> checkBackend() async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      final client = await prism.TokenApiClient.connect(_factory);
+      try {
+        final echo = await client.ping(sleepMs: 0, echo: 'nectar-sts');
+        stopwatch.stop();
+        return {
+          'ok': true,
+          'backend': name,
+          'echo': echo,
+          'roundTripMs': stopwatch.elapsedMilliseconds,
+        };
+      } finally {
+        await client.close();
+      }
+    } catch (e) {
+      stopwatch.stop();
+      return {
+        'ok': false,
+        'backend': name,
+        'error': e.toString(),
+        'roundTripMs': stopwatch.elapsedMilliseconds,
+      };
+    }
+  }
+
   // ---- helpers ----------------------------------------------------
 
   prism.MeterConfigIn _meterConfigFromParams(Map<String, dynamic> params) {
@@ -250,8 +292,7 @@ class PrismIssuer implements TokenIssuer {
       _requiredString(params, VirtualHsmParams.keyRevisionNo),
     );
     final ti = int.parse(_requiredString(params, VirtualHsmParams.tariffIndex));
-    final ken =
-        int.tryParse(
+    final ken = int.tryParse(
           (params[VirtualHsmParams.keyExpiryNumberHighOrder] ?? '0').toString(),
         ) ??
         0;

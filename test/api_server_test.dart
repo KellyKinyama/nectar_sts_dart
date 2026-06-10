@@ -7,27 +7,51 @@ import 'package:shelf/shelf.dart';
 import 'package:test/test.dart';
 
 TokenIssuer _hsm() => VirtualHsmIssuer(
-  VirtualHsm(
-    VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
-  ),
-);
+      VirtualHsm(
+        VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+      ),
+    );
+
+class _UnhealthyIssuer implements TokenIssuer {
+  @override
+  String get name => 'UnhealthyIssuer';
+
+  @override
+  Future<Map<String, Object?>> checkBackend() async => {
+        'ok': false,
+        'backend': name,
+        'error': 'boom: connection refused',
+      };
+
+  @override
+  Future<Token> generateToken(String requestId, Map<String, dynamic> params) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Token> decodeToken(
+    String requestId,
+    String tokenNo,
+    Map<String, dynamic> params,
+  ) =>
+      throw UnimplementedError();
+}
 
 Map<String, dynamic> _baseParams() => {
-  'decoder_key_generation_algorithm': '02',
-  'encryption_algorithm': 'sta',
-  'key_type': 2,
-  'supply_group_code': '123456',
-  'tariff_index': '07',
-  'key_revision_no': 1,
-  'issuer_identification_no': '600727',
-  'decoder_reference_number': '12345678901',
-  'class': '0',
-  'subclass': '0',
-  'amount': 25.5,
-  'token_id': '2024-06-01T12:00:00Z',
-  'random_no': 7,
-  'base_date': '1993',
-};
+      'decoder_key_generation_algorithm': '02',
+      'encryption_algorithm': 'sta',
+      'key_type': 2,
+      'supply_group_code': '123456',
+      'tariff_index': '07',
+      'key_revision_no': 1,
+      'issuer_identification_no': '600727',
+      'decoder_reference_number': '12345678901',
+      'class': '0',
+      'subclass': '0',
+      'amount': 25.5,
+      'token_id': '2024-06-01T12:00:00Z',
+      'random_no': 7,
+      'base_date': '1993',
+    };
 
 Future<Map<String, dynamic>> _post(
   Handler handler,
@@ -66,6 +90,25 @@ void main() {
       final r = await _get(handler, '/healthz');
       expect(r['status'], 200);
       expect((r['body'] as Map)['status'], 'ok');
+    });
+
+    test('GET /v1/health/backend returns 200 with VirtualHsmIssuer', () async {
+      final handler = buildApiHandler(_hsm());
+      final r = await _get(handler, '/v1/health/backend');
+      expect(r['status'], 200);
+      final body = r['body'] as Map<String, dynamic>;
+      expect(body['ok'], isTrue);
+      expect(body['backend'], isNotEmpty);
+    });
+
+    test('GET /v1/health/backend returns 503 when issuer is unhealthy',
+        () async {
+      final handler = buildApiHandler(_UnhealthyIssuer());
+      final r = await _get(handler, '/v1/health/backend');
+      expect(r['status'], 503);
+      final body = r['body'] as Map<String, dynamic>;
+      expect(body['ok'], isFalse);
+      expect(body['error'], contains('boom'));
     });
 
     test('POST /v1/tokens -> POST /v1/tokens/{tokenNo} round-trips', () async {
@@ -204,10 +247,8 @@ void main() {
       final log = VendingLog();
       final handler = buildApiHandler(_hsm(), log: log);
       final gen = await _post(handler, '/v1/tokens', _baseParams());
-      final tokenNo =
-          (((gen['body'] as Map)['data'] as Map)['token'] as List)
-                  .first['token_no']
-              as String;
+      final tokenNo = (((gen['body'] as Map)['data'] as Map)['token'] as List)
+          .first['token_no'] as String;
 
       final hit = await _get(handler, '/v1/tokens/$tokenNo');
       expect(hit['status'], 200);
@@ -270,19 +311,19 @@ void main() {
 
   group('meter registry', () {
     Map<String, dynamic> _registerBody() => {
-      'serial': 'METER-001',
-      'subscriber_label': 'Acme Bakery',
-      'encryption_algorithm': 'sta',
-      'identity': {
-        'issuer_identification_no': '600727',
-        'decoder_reference_number': '12345678901',
-        'key_type': 2,
-        'supply_group_code': '123456',
-        'tariff_index': '07',
-        'key_revision_no': 1,
-        'decoder_key_generation_algorithm': '02',
-      },
-    };
+          'serial': 'METER-001',
+          'subscriber_label': 'Acme Bakery',
+          'encryption_algorithm': 'sta',
+          'identity': {
+            'issuer_identification_no': '600727',
+            'decoder_reference_number': '12345678901',
+            'key_type': 2,
+            'supply_group_code': '123456',
+            'tariff_index': '07',
+            'key_revision_no': 1,
+            'decoder_key_generation_algorithm': '02',
+          },
+        };
 
     test('POST /v1/meters registers and GET /v1/meters lists it', () async {
       final reg = MeterRegistry();
@@ -447,11 +488,12 @@ void main() {
 
   group('tariff / pricing', () {
     TariffBook _book() => TariffBook(
-      byTariffIndex: {
-        '07': const Tariff(currency: 'KES', pricePerKwh: 24.0),
-        '01': const Tariff(currency: 'IDR', pricePerKwh: 1444, adminFee: 2500),
-      },
-    );
+          byTariffIndex: {
+            '07': const Tariff(currency: 'KES', pricePerKwh: 24.0),
+            '01': const Tariff(
+                currency: 'IDR', pricePerKwh: 1444, adminFee: 2500),
+          },
+        );
 
     test(
       'amount_money is converted to kWh and reported in pricing block',

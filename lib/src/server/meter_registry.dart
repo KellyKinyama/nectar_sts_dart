@@ -43,20 +43,20 @@ class RegisteredMeter {
   });
 
   Map<String, dynamic> toJson() => {
-    'serial': serial,
-    'registered_at': registeredAt.toUtc().toIso8601String(),
-    'encryption_algorithm': encryptionAlgorithm,
-    if (subscriberLabel != null) 'subscriber_label': subscriberLabel,
-    'identity': identity.toJson(),
-  };
+        'serial': serial,
+        'registered_at': registeredAt.toUtc().toIso8601String(),
+        'encryption_algorithm': encryptionAlgorithm,
+        if (subscriberLabel != null) 'subscriber_label': subscriberLabel,
+        'identity': identity.toJson(),
+      };
 
   factory RegisteredMeter.fromJson(Map<String, dynamic> j) => RegisteredMeter(
-    serial: j['serial'] as String,
-    registeredAt: DateTime.parse(j['registered_at'] as String),
-    encryptionAlgorithm: (j['encryption_algorithm'] as String?) ?? 'sta',
-    subscriberLabel: j['subscriber_label'] as String?,
-    identity: MeterIdentity.fromJson(j['identity'] as Map<String, dynamic>),
-  );
+        serial: j['serial'] as String,
+        registeredAt: DateTime.parse(j['registered_at'] as String),
+        encryptionAlgorithm: (j['encryption_algorithm'] as String?) ?? 'sta',
+        subscriberLabel: j['subscriber_label'] as String?,
+        identity: MeterIdentity.fromJson(j['identity'] as Map<String, dynamic>),
+      );
 }
 
 /// Thrown by [MeterRegistry.register] when [RegisteredMeter.serial]
@@ -101,8 +101,8 @@ class MeterRegistry implements MeterStore {
     List<RegisteredMeter>? meters,
     DateTime? createdAt,
     this.filePath,
-  }) : _meters = meters ?? <RegisteredMeter>[],
-       createdAt = createdAt ?? DateTime.now().toUtc();
+  })  : _meters = meters ?? <RegisteredMeter>[],
+        createdAt = createdAt ?? DateTime.now().toUtc();
 
   List<RegisteredMeter> get meters => List.unmodifiable(_meters);
   int get length => _meters.length;
@@ -152,10 +152,10 @@ class MeterRegistry implements MeterStore {
   // ---- persistence --------------------------------------------
 
   Map<String, dynamic> toJson() => {
-    'schema': 'nectar_sts_dart.meter_registry/v1',
-    'created_at': createdAt.toIso8601String(),
-    'meters': _meters.map((m) => m.toJson()).toList(),
-  };
+        'schema': 'nectar_sts_dart.meter_registry/v1',
+        'created_at': createdAt.toIso8601String(),
+        'meters': _meters.map((m) => m.toJson()).toList(),
+      };
 
   factory MeterRegistry.fromJson(Map<String, dynamic> j, {String? filePath}) {
     final schema = j['schema'];

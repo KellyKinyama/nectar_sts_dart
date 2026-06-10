@@ -61,7 +61,8 @@ class _FakeServer {
 }
 
 void main() {
-  test('PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
+  test(
+      'PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
       'TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -134,7 +135,8 @@ void main() {
     expect(t.tokenIdentifier!.bitString.value, 12345);
   });
 
-  test('PrismIssuer.generateToken throws NotImplementedException for '
+  test(
+      'PrismIssuer.generateToken throws NotImplementedException for '
       'non-electricity classes', () async {
     final issuer = PrismIssuer.forTesting(
       const PrismConfig(
@@ -157,7 +159,8 @@ void main() {
     );
   });
 
-  test('PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
+  test(
+      'PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
       'a TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -212,16 +215,16 @@ void main() {
       server.socketFactory,
     );
 
-    final decoded = await issuer
-        .decodeToken('req-decode-1', '11122233344455566677', {
-          VirtualHsmParams.tokenClass: '0',
-          VirtualHsmParams.tokenSubclass: '0',
-          VirtualHsmParams.decoderReferenceNumber: '56000000001',
-          VirtualHsmParams.supplyGroupCode: '123456',
-          VirtualHsmParams.tariffIndex: '1',
-          VirtualHsmParams.keyRevisionNo: '1',
-          VirtualHsmParams.encryptionAlgorithm: 'sta',
-        });
+    final decoded =
+        await issuer.decodeToken('req-decode-1', '11122233344455566677', {
+      VirtualHsmParams.tokenClass: '0',
+      VirtualHsmParams.tokenSubclass: '0',
+      VirtualHsmParams.decoderReferenceNumber: '56000000001',
+      VirtualHsmParams.supplyGroupCode: '123456',
+      VirtualHsmParams.tariffIndex: '1',
+      VirtualHsmParams.keyRevisionNo: '1',
+      VirtualHsmParams.encryptionAlgorithm: 'sta',
+    });
 
     expect(decoded, isA<TransferElectricityCreditToken>());
     final t = decoded as TransferElectricityCreditToken;
@@ -282,5 +285,61 @@ void main() {
       }),
       throwsA(predicate((e) => e.toString().contains('Invalid'))),
     );
+  });
+
+  test('PrismIssuer.checkBackend reports ok when ping succeeds', () async {
+    final server = await _FakeServer.bind({
+      'ping': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(TMessage('ping', TMessageType.reply, call.seqId));
+        w.writeFieldBegin(TType.string, 0);
+        w.writeString('nectar-sts');
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+    });
+    addTearDown(server.close);
+
+    final issuer = PrismIssuer.forTesting(
+      const PrismConfig(
+        host: '127.0.0.1',
+        port: 0,
+        realm: 'STS',
+        username: 'vendor',
+        password: 'pw',
+      ),
+      server.socketFactory,
+    );
+
+    final report = await issuer.checkBackend();
+    expect(report['ok'], isTrue);
+    expect(report['echo'], 'nectar-sts');
+    expect(report['backend'], contains('PrismIssuer'));
+    expect(report['roundTripMs'], isA<int>());
+  });
+
+  test('PrismIssuer.checkBackend reports ok=false when connection fails',
+      () async {
+    // No fake server bound; connect to a port nothing is listening on.
+    Future<Socket> failingFactory() => Socket.connect(
+          InternetAddress.loopbackIPv4,
+          1, // privileged port nothing in CI binds to
+          timeout: const Duration(milliseconds: 200),
+        );
+
+    final issuer = PrismIssuer.forTesting(
+      const PrismConfig(
+        host: '127.0.0.1',
+        port: 1,
+        realm: 'STS',
+        username: 'vendor',
+        password: 'pw',
+      ),
+      failingFactory,
+    );
+
+    final report = await issuer.checkBackend();
+    expect(report['ok'], isFalse);
+    expect(report['error'], isNotEmpty);
   });
 }
