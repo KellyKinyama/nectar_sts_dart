@@ -472,4 +472,86 @@ void main() {
       expect(tokens.first['tokenNo'], startsWith('30'));
     },
   );
+
+  test(
+    'PrismIssuer.issueMseToken signs in then forwards subclass + transferAmount',
+    () async {
+      late double observedTransferAmount;
+      late int observedSubclass;
+      final server = await _FakeServer.bind({
+        'signInWithPassword': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('jwt-mse');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+        'issueMseToken': (call, args) {
+          // Walk the request struct to capture subclass (field 4) and
+          // transferAmount (field 5).
+          observedSubclass = 0;
+          observedTransferAmount = 0;
+          while (true) {
+            final (type, id) = args.readFieldBegin();
+            if (type == TType.stop) break;
+            if (id == 4 && type == TType.i16) {
+              observedSubclass = args.readI16();
+            } else if (id == 5 && type == TType.double_) {
+              observedTransferAmount = args.readDouble();
+            } else {
+              args.skip(type);
+            }
+          }
+
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueMseToken', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 1);
+          w.writeFieldBegin(TType.i16, 11);
+          w.writeI16(observedSubclass);
+          w.writeFieldBegin(TType.string, 20);
+          w.writeString('Mse:subclass$observedSubclass');
+          w.writeFieldBegin(TType.string, 30);
+          w.writeString('99999999999999999999');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 0,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+        ),
+        server.socketFactory,
+      );
+
+      final tokens = await issuer.issueMseToken('req-mse', 0, 12.5, {
+        VirtualHsmParams.decoderReferenceNumber: '56000000001',
+        VirtualHsmParams.encryptionAlgorithm: 'sta',
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '1',
+        VirtualHsmParams.keyRevisionNo: '1',
+      });
+
+      expect(observedSubclass, 0);
+      expect(observedTransferAmount, 12.5);
+      expect(tokens, hasLength(1));
+      expect(tokens.first['subclass'], 0);
+      expect(tokens.first['description'], 'Mse:subclass0');
+      expect(tokens.first['tokenNo'], '99999999999999999999');
+    },
+  );
 }

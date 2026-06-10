@@ -45,6 +45,15 @@ class _UnhealthyIssuer implements TokenIssuer {
     Map<String, dynamic> params,
   ) =>
       throw UnimplementedError();
+
+  @override
+  Future<List<Map<String, Object?>>> issueMseToken(
+    String requestId,
+    int subclass,
+    double transferAmount,
+    Map<String, dynamic> params,
+  ) =>
+      throw UnimplementedError();
 }
 
 Map<String, dynamic> _baseParams() => {
@@ -166,6 +175,58 @@ void main() {
         expect(
           (body['status'] as Map)['message'],
           contains('Key Change Token'),
+        );
+      },
+    );
+
+    test(
+      'POST /v1/tokens/mse/* -> 501 NotImplemented for VirtualHsm',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        for (final path in const [
+          '/v1/tokens/mse/clear-credit',
+          '/v1/tokens/mse/clear-tamper',
+        ]) {
+          final r = await _post(handler, path, _baseParams());
+          expect(r['status'], 501, reason: '$path expected 501');
+          expect(
+            ((r['body'] as Map)['status'] as Map)['message'],
+            contains('MSE token'),
+          );
+        }
+      },
+    );
+
+    test(
+      'POST /v1/tokens/mse/set-max-power -> 400 when maximum_power_limit missing',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(
+          handler,
+          '/v1/tokens/mse/set-max-power',
+          _baseParams(),
+        );
+        expect(r['status'], 400);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          contains('maximum_power_limit'),
+        );
+      },
+    );
+
+    test(
+      'POST /v1/tokens/mse/set-flag -> 400 when flag_type/flag_value missing',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(
+          handler,
+          '/v1/tokens/mse/set-flag',
+          _baseParams(),
+        );
+        expect(r['status'], 400);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          anyOf(contains('flag_type'), contains('flag_value')),
         );
       },
     );

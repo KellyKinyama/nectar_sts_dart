@@ -10,6 +10,18 @@
 ///                                    `new_key_revision_number`,
 ///                                    `new_tariff_index` to the regular
 ///                                    VirtualHsmParams shape.
+///   POST /v1/tokens/mse/clear-credit    — Class 2 / subclass 1
+///   POST /v1/tokens/mse/clear-tamper    — Class 2 / subclass 5
+///   POST /v1/tokens/mse/set-max-power   — Class 2 / subclass 0;
+///                                          body adds `maximum_power_limit` (kW)
+///   POST /v1/tokens/mse/set-tariff      — Class 2 / subclass 2;
+///                                          body adds `tariff_rate`
+///   POST /v1/tokens/mse/set-flag        — Class 2 / subclass 10;
+///                                          body adds `flag_type` (0..11) and
+///                                          `flag_value` (0|1). The wire
+///                                          payload is encoded the same way as
+///                                          the Java reference
+///                                          (`PrismHSMConnector.getTokenFlag`).
 ///   GET  /healthz                  — liveness probe.
 ///   GET  /v1/health/backend        — issuer-backend probe (ping the
 ///                                    Prism HSM / VirtualHsm). 200 when
@@ -94,9 +106,26 @@ Handler buildApiHandler(
       (Request r) => _generateHandler(r, issuer, log, registry, tariffs),
     )
     ..get('/v1/tokens', (Request r) => _listHandler(r, log))
+    ..post('/v1/tokens/key-change', (Request r) => _keyChangeHandler(r, issuer))
     ..post(
-      '/v1/tokens/key-change',
-      (Request r) => _keyChangeHandler(r, issuer),
+      '/v1/tokens/mse/clear-credit',
+      (Request r) => _mseHandler(r, issuer, _MseOp.clearCredit),
+    )
+    ..post(
+      '/v1/tokens/mse/clear-tamper',
+      (Request r) => _mseHandler(r, issuer, _MseOp.clearTamper),
+    )
+    ..post(
+      '/v1/tokens/mse/set-max-power',
+      (Request r) => _mseHandler(r, issuer, _MseOp.setMaxPower),
+    )
+    ..post(
+      '/v1/tokens/mse/set-tariff',
+      (Request r) => _mseHandler(r, issuer, _MseOp.setTariff),
+    )
+    ..post(
+      '/v1/tokens/mse/set-flag',
+      (Request r) => _mseHandler(r, issuer, _MseOp.setFlag),
     )
     ..get(
       '/v1/tokens/<tokenNo>',
@@ -254,6 +283,100 @@ Future<Response> _keyChangeHandler(Request request, TokenIssuer issuer) async {
       data: {'tokens': tokens},
     ),
   );
+}
+
+/// Class 2 / MSE operations exposed as discrete `/v1/tokens/mse/*` routes.
+/// Each entry carries the wire subclass (per
+/// `PrismHSMConnector.MseToken`) and a request-body resolver that turns
+/// the JSON request into a `transferAmount` double for Prism.
+enum _MseOp {
+  clearCredit(1, 'Clear credit'),
+  clearTamper(5, 'Clear tamper'),
+  setMaxPower(0, 'Set max power'),
+  setTariff(2, 'Set tariff rate'),
+  setFlag(10, 'Set flag');
+
+  final int subclass;
+  final String description;
+  const _MseOp(this.subclass, this.description);
+}
+
+Future<Response> _mseHandler(
+  Request request,
+  TokenIssuer issuer,
+  _MseOp op,
+) async {
+  final requestId = _newRequestId();
+  final body = await _readJsonBody(request);
+  _rejectSensitiveParams(body);
+  final transferAmount = _resolveMseTransferAmount(op, body);
+  final tokens = await issuer.issueMseToken(
+    requestId,
+    op.subclass,
+    transferAmount,
+    body,
+  );
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: '${op.description} token issued',
+      requestId: requestId,
+      data: {'tokens': tokens},
+    ),
+  );
+}
+
+/// Resolve the `transferAmount` Prism wire field for a given MSE op.
+/// Matches `PrismHSMConnector.generateMseToken` semantics: max-power
+/// uses `maximum_power_limit`, tariff-rate uses `tariff_rate`, set-flag
+/// encodes `flag_type`+`flag_value` the same way as
+/// `PrismHSMConnector.getTokenFlag`, everything else is `0`.
+double _resolveMseTransferAmount(_MseOp op, Map<String, dynamic> body) {
+  switch (op) {
+    case _MseOp.clearCredit:
+    case _MseOp.clearTamper:
+      return 0;
+    case _MseOp.setMaxPower:
+      return _requireBodyDouble(body, 'maximum_power_limit');
+    case _MseOp.setTariff:
+      return _requireBodyDouble(body, 'tariff_rate');
+    case _MseOp.setFlag:
+      final flagType = _requireBodyInt(body, 'flag_type');
+      final flagValue = _requireBodyInt(body, 'flag_value');
+      return _encodeSetFlagPayload(flagType, flagValue);
+  }
+}
+
+double _requireBodyDouble(Map<String, dynamic> body, String key) {
+  final v = body[key];
+  if (v is num) return v.toDouble();
+  if (v is String) {
+    final parsed = double.tryParse(v);
+    if (parsed != null) return parsed;
+  }
+  throw _BadRequest('Field "$key" is required and must be numeric');
+}
+
+int _requireBodyInt(Map<String, dynamic> body, String key) {
+  final v = body[key];
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  if (v is String) {
+    final parsed = int.tryParse(v);
+    if (parsed != null) return parsed;
+  }
+  throw _BadRequest('Field "$key" is required and must be an integer');
+}
+
+/// Mirrors `PrismHSMConnector.getTokenFlag`: pack a constant 6-bit
+/// index (63), a 9-bit `flag_type`, and a 1-bit `flag_value` as a
+/// 16-char string of '0'/'1' chars, then parse it as a *decimal*
+/// integer (not binary). Faithful to the Java reference quirk.
+double _encodeSetFlagPayload(int flagType, int flagValue) {
+  String pad(int v, int w) => v.toRadixString(2).padLeft(w, '0');
+  final s = '111111${pad(flagType, 9)}${pad(flagValue, 1)}';
+  return double.parse(s);
 }
 
 Future<Response> _listHandler(Request request, VendingLogStore? log) async {

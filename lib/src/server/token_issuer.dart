@@ -90,6 +90,26 @@ abstract class TokenIssuer {
       throw NotImplementedException(
         '$name does not support atomic Key Change Token issuance.',
       );
+
+  /// Issue a Class 2 Management/Secondary-Engineering (MSE) token.
+  /// [subclass] picks the operation (`PrismHSMConnector.MseToken`):
+  /// 0=SetMaximumPowerLimit, 1=ClearCredit, 2=SetTariffRate,
+  /// 5=ClearTamper, 10=SetFlag, etc. [transferAmount] is the
+  /// already-resolved numeric payload (kW for max-power, encoded
+  /// flag-word for SetFlag, 0 for ClearCredit/ClearTamper).
+  ///
+  /// Returns the per-token `{tokenNo, subclass, description}`
+  /// records Prism produced — typically one for STA/DEA and two
+  /// for MISTY1.
+  FutureOr<List<Map<String, Object?>>> issueMseToken(
+    String requestId,
+    int subclass,
+    double transferAmount,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support MSE token issuance.',
+      );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -136,6 +156,17 @@ class VirtualHsmIssuer implements TokenIssuer {
   ) =>
       throw NotImplementedException(
         '$name does not support atomic Key Change Token issuance.',
+      );
+
+  @override
+  Future<List<Map<String, Object?>>> issueMseToken(
+    String requestId,
+    int subclass,
+    double transferAmount,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support MSE token issuance.',
       );
 }
 
@@ -378,6 +409,45 @@ class PrismIssuer implements TokenIssuer {
         accessToken: accessToken,
         meterConfig: meterConfig,
         newConfig: newConfig,
+      );
+      return [
+        for (final t in tokens)
+          {
+            'tokenNo': t.tokenDec,
+            'subclass': t.subclass,
+            'description': t.description,
+          },
+      ];
+    } finally {
+      await client.close();
+    }
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> issueMseToken(
+    String requestId,
+    int subclass,
+    double transferAmount,
+    Map<String, dynamic> params,
+  ) async {
+    final meterConfig = _meterConfigFromParams(params);
+    final tokenTime = _tokenTimeSeconds(params);
+
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      final tokens = await client.issueMseToken(
+        messageId: requestId,
+        accessToken: accessToken,
+        meterConfig: meterConfig,
+        subclass: subclass,
+        transferAmount: transferAmount,
+        tokenTime: tokenTime,
       );
       return [
         for (final t in tokens)
