@@ -29,6 +29,17 @@
 ///                                          `manufacturer_code` (int).
 ///                                          Returns a single token, not a
 ///                                          bundle.
+///   POST /v1/tokens/credit/electricity-currency — Class 0 / subclass 4
+///   POST /v1/tokens/credit/water-currency       — Class 0 / subclass 5
+///   POST /v1/tokens/credit/gas-currency         — Class 0 / subclass 6
+///   POST /v1/tokens/credit/time-currency        — Class 0 / subclass 7
+///                                    Body: standard VirtualHsmParams +
+///                                    `amount` (currency units; scaled
+///                                    ×100000 internally per
+///                                    `PrismHSMConnector.generateCreditToken`).
+///                                    Returns a token list with
+///                                    `{tokenNo, subclass, description,
+///                                     scaledAmount}` per entry.
 ///   GET  /healthz                  — liveness probe.
 ///   GET  /v1/health/backend        — issuer-backend probe (ping the
 ///                                    Prism HSM / VirtualHsm). 200 when
@@ -137,6 +148,22 @@ Handler buildApiHandler(
     ..post(
       '/v1/tokens/meter-test',
       (Request r) => _meterTestHandler(r, issuer),
+    )
+    ..post(
+      '/v1/tokens/credit/electricity-currency',
+      (Request r) => _currencyCreditHandler(r, issuer, 4, 'electricity'),
+    )
+    ..post(
+      '/v1/tokens/credit/water-currency',
+      (Request r) => _currencyCreditHandler(r, issuer, 5, 'water'),
+    )
+    ..post(
+      '/v1/tokens/credit/gas-currency',
+      (Request r) => _currencyCreditHandler(r, issuer, 6, 'gas'),
+    )
+    ..post(
+      '/v1/tokens/credit/time-currency',
+      (Request r) => _currencyCreditHandler(r, issuer, 7, 'time'),
     )
     ..get(
       '/v1/tokens/<tokenNo>',
@@ -410,6 +437,31 @@ Future<Response> _meterTestHandler(Request request, TokenIssuer issuer) async {
       message: 'Meter-test token issued',
       requestId: requestId,
       data: {'token': token},
+    ),
+  );
+}
+
+Future<Response> _currencyCreditHandler(
+  Request request,
+  TokenIssuer issuer,
+  int subclass,
+  String resourceLabel,
+) async {
+  final requestId = _newRequestId();
+  final body = await _readJsonBody(request);
+  _rejectSensitiveParams(body);
+  final tokens = await issuer.issueCurrencyCreditToken(
+    requestId,
+    subclass,
+    body,
+  );
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Currency-credit token issued ($resourceLabel)',
+      requestId: requestId,
+      data: {'tokens': tokens},
     ),
   );
 }

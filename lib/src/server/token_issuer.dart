@@ -130,6 +130,24 @@ abstract class TokenIssuer {
       throw NotImplementedException(
         '$name does not support NMSE meter-test token issuance.',
       );
+
+  /// Issue a Class 0 currency-credit token (subclasses 4–7:
+  /// `ElectricityCurrency`, `WaterCurrency`, `GasCurrency`,
+  /// `TimeCurrency` per `PrismHSMConnector.CreditTokenType`). Wire
+  /// shape matches `issueCreditToken` but the `transferAmount` field
+  /// is multiplied by 100000 instead of 10 — caller passes the
+  /// human-readable currency amount; the implementer does the scale.
+  ///
+  /// Returns a flat `{tokenNo, subclass, description, scaledAmount}`
+  /// list (Prism may return >1 entry for MISTY1).
+  FutureOr<List<Map<String, Object?>>> issueCurrencyCreditToken(
+    String requestId,
+    int subclass,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support currency-credit token issuance.',
+      );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -198,6 +216,16 @@ class VirtualHsmIssuer implements TokenIssuer {
   ) =>
       throw NotImplementedException(
         '$name does not support NMSE meter-test token issuance.',
+      );
+
+  @override
+  Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
+    String requestId,
+    int subclass,
+    Map<String, dynamic> params,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support currency-credit token issuance.',
       );
 }
 
@@ -523,6 +551,57 @@ class PrismIssuer implements TokenIssuer {
         'description': t.description,
         'tokenHex': t.tokenHex,
       };
+    } finally {
+      await client.close();
+    }
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
+    String requestId,
+    int subclass,
+    Map<String, dynamic> params,
+  ) async {
+    if (subclass < 4 || subclass > 7) {
+      throw NotImplementedException(
+        'PrismIssuer.issueCurrencyCreditToken: subclass must be 4..7 '
+        '(ElectricityCurrency, WaterCurrency, GasCurrency, '
+        'TimeCurrency). Got $subclass.',
+      );
+    }
+    final meterConfig = _meterConfigFromParams(params);
+    final amount = _requiredDouble(params, VirtualHsmParams.amount);
+    final tokenTime = _tokenTimeSeconds(params);
+
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      // Currency-credit subclasses (4–7) scale by 100000 per
+      // PrismHSMConnector.generateCreditToken, vs ×10 for kWh.
+      final scaled = amount * 100000;
+      final tokens = await client.issueCreditToken(
+        messageId: requestId,
+        accessToken: accessToken,
+        meterConfig: meterConfig,
+        subclass: subclass,
+        transferAmount: scaled,
+        tokenTime: tokenTime,
+        flags: prism.TokenIssueFlags.externalClock,
+      );
+      return [
+        for (final t in tokens)
+          {
+            'tokenNo': t.tokenDec,
+            'subclass': t.subclass,
+            'description': t.description,
+            'scaledAmount': t.scaledAmount,
+          },
+      ];
     } finally {
       await client.close();
     }

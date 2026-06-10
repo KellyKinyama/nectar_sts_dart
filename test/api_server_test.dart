@@ -63,6 +63,14 @@ class _UnhealthyIssuer implements TokenIssuer {
     int manufacturerCode,
   ) =>
       throw UnimplementedError();
+
+  @override
+  Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
+    String requestId,
+    int subclass,
+    Map<String, dynamic> params,
+  ) =>
+      throw UnimplementedError();
 }
 
 Map<String, dynamic> _baseParams() => {
@@ -270,6 +278,29 @@ void main() {
           ((r['body'] as Map)['status'] as Map)['message'],
           contains('control'),
         );
+      },
+    );
+
+    test(
+      'POST /v1/tokens/credit/*-currency -> 501 NotImplemented for VirtualHsm',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        for (final path in const [
+          '/v1/tokens/credit/electricity-currency',
+          '/v1/tokens/credit/water-currency',
+          '/v1/tokens/credit/gas-currency',
+          '/v1/tokens/credit/time-currency',
+        ]) {
+          final r = await _post(handler, path, {
+            ..._baseParams(),
+            'amount': 50.0,
+          });
+          expect(r['status'], 501, reason: '$path expected 501');
+          expect(
+            ((r['body'] as Map)['status'] as Map)['message'],
+            contains('currency-credit'),
+          );
+        }
       },
     );
 

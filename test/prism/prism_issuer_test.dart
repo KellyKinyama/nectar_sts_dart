@@ -11,6 +11,7 @@ import 'package:nectar_sts_dart/src/hsm/virtual_hsm_dispatch.dart';
 import 'package:nectar_sts_dart/src/prism/thrift_binary_protocol.dart';
 import 'package:nectar_sts_dart/src/server/token_issuer.dart';
 import 'package:nectar_sts_dart/src/token/class0_tokens.dart';
+import 'package:nectar_sts_dart/src/exceptions/exceptions.dart';
 import 'package:test/test.dart';
 
 typedef _Handler = Uint8List Function(TMessage call, BinaryReader args);
@@ -640,6 +641,111 @@ void main() {
       expect(token['description'], 'NMse:control3');
       expect(token['tokenNo'], '88888888888888888888');
       expect(token['tokenHex'], '0xCAFEBABE');
+    },
+  );
+
+  test(
+    'PrismIssuer.issueCurrencyCreditToken scales amount by 100000 '
+    'and forwards subclass',
+    () async {
+      late int observedSubclass;
+      late double observedTransferAmount;
+      final server = await _FakeServer.bind({
+        'signInWithPassword': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('jwt-currency');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+        'issueCreditToken': (call, args) {
+          observedSubclass = 0;
+          observedTransferAmount = 0;
+          while (true) {
+            final (type, id) = args.readFieldBegin();
+            if (type == TType.stop) break;
+            if (id == 4 && type == TType.i16) {
+              observedSubclass = args.readI16();
+            } else if (id == 5 && type == TType.double_) {
+              observedTransferAmount = args.readDouble();
+            } else {
+              args.skip(type);
+            }
+          }
+
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueCreditToken', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 1);
+          w.writeFieldBegin(TType.i16, 11);
+          w.writeI16(observedSubclass);
+          w.writeFieldBegin(TType.string, 20);
+          w.writeString('Credit:ElectricityCurrency');
+          w.writeFieldBegin(TType.string, 22);
+          w.writeString(observedTransferAmount.toString());
+          w.writeFieldBegin(TType.string, 30);
+          w.writeString('77777777777777777777');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 0,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+        ),
+        server.socketFactory,
+      );
+
+      final tokens = await issuer.issueCurrencyCreditToken('req-cur', 4, {
+        VirtualHsmParams.decoderReferenceNumber: '56000000001',
+        VirtualHsmParams.encryptionAlgorithm: 'sta',
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '1',
+        VirtualHsmParams.keyRevisionNo: '1',
+        VirtualHsmParams.amount: 25.50,
+      });
+
+      expect(observedSubclass, 4);
+      expect(observedTransferAmount, 25.50 * 100000);
+      expect(tokens, hasLength(1));
+      expect(tokens.first['subclass'], 4);
+      expect(tokens.first['description'], 'Credit:ElectricityCurrency');
+      expect(tokens.first['tokenNo'], '77777777777777777777');
+      expect(tokens.first['scaledAmount'], (25.50 * 100000).toString());
+    },
+  );
+
+  test(
+    'PrismIssuer.issueCurrencyCreditToken rejects subclass outside 4..7',
+    () async {
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 0,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+        ),
+        () => throw StateError('should not connect'),
+      );
+      expect(
+        () => issuer.issueCurrencyCreditToken('req-bad', 0, {}),
+        throwsA(isA<NotImplementedException>()),
+      );
     },
   );
 }
