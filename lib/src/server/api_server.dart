@@ -22,6 +22,13 @@
 ///                                          payload is encoded the same way as
 ///                                          the Java reference
 ///                                          (`PrismHSMConnector.getTokenFlag`).
+///   POST /v1/tokens/meter-test          — Class 1 / 3 NMSE test token.
+///                                          Body: `subclass` (int),
+///                                          `control` (int — see
+///                                          `PrismHSMConnector.NMseType`),
+///                                          `manufacturer_code` (int).
+///                                          Returns a single token, not a
+///                                          bundle.
 ///   GET  /healthz                  — liveness probe.
 ///   GET  /v1/health/backend        — issuer-backend probe (ping the
 ///                                    Prism HSM / VirtualHsm). 200 when
@@ -126,6 +133,10 @@ Handler buildApiHandler(
     ..post(
       '/v1/tokens/mse/set-flag',
       (Request r) => _mseHandler(r, issuer, _MseOp.setFlag),
+    )
+    ..post(
+      '/v1/tokens/meter-test',
+      (Request r) => _meterTestHandler(r, issuer),
     )
     ..get(
       '/v1/tokens/<tokenNo>',
@@ -377,6 +388,30 @@ double _encodeSetFlagPayload(int flagType, int flagValue) {
   String pad(int v, int w) => v.toRadixString(2).padLeft(w, '0');
   final s = '111111${pad(flagType, 9)}${pad(flagValue, 1)}';
   return double.parse(s);
+}
+
+Future<Response> _meterTestHandler(Request request, TokenIssuer issuer) async {
+  final requestId = _newRequestId();
+  final body = await _readJsonBody(request);
+  _rejectSensitiveParams(body);
+  final subclass = _requireBodyInt(body, 'subclass');
+  final control = _requireBodyInt(body, 'control');
+  final manufacturerCode = _requireBodyInt(body, 'manufacturer_code');
+  final token = await issuer.issueMeterTestToken(
+    requestId,
+    subclass,
+    control,
+    manufacturerCode,
+  );
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Meter-test token issued',
+      requestId: requestId,
+      data: {'token': token},
+    ),
+  );
 }
 
 Future<Response> _listHandler(Request request, VendingLogStore? log) async {

@@ -54,6 +54,15 @@ class _UnhealthyIssuer implements TokenIssuer {
     Map<String, dynamic> params,
   ) =>
       throw UnimplementedError();
+
+  @override
+  Future<Map<String, Object?>> issueMeterTestToken(
+    String requestId,
+    int subclass,
+    int control,
+    int manufacturerCode,
+  ) =>
+      throw UnimplementedError();
 }
 
 Map<String, dynamic> _baseParams() => {
@@ -227,6 +236,39 @@ void main() {
         expect(
           ((r['body'] as Map)['status'] as Map)['message'],
           anyOf(contains('flag_type'), contains('flag_value')),
+        );
+      },
+    );
+
+    test(
+      'POST /v1/tokens/meter-test -> 501 NotImplemented for VirtualHsm',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/meter-test', {
+          'subclass': 1,
+          'control': 3,
+          'manufacturer_code': 7,
+        });
+        expect(r['status'], 501);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          contains('NMSE meter-test'),
+        );
+      },
+    );
+
+    test(
+      'POST /v1/tokens/meter-test -> 400 when control missing',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/meter-test', {
+          'subclass': 1,
+          'manufacturer_code': 7,
+        });
+        expect(r['status'], 400);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          contains('control'),
         );
       },
     );

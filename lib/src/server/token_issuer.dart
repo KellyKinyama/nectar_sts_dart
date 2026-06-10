@@ -110,6 +110,26 @@ abstract class TokenIssuer {
       throw NotImplementedException(
         '$name does not support MSE token issuance.',
       );
+
+  /// Issue a Class 1 / 3 Non-Meter-Specific Engineering (NMSE) test
+  /// token. The token is independent of any meter's keys; the
+  /// [control] word picks the diagnostic routine
+  /// (`PrismHSMConnector.NMseType`: 0=Primary, 1=TestLoadSwitch,
+  /// 2=TestInformationDisplay, …, 32=InitiateMeterTest) and
+  /// [manufacturerCode] gates it to a specific meter make.
+  ///
+  /// Returns one token record
+  /// `{tokenNo, subclass, control, manufacturerCode, description,
+  /// tokenHex}` — unlike MSE/KCT this is never a bundle.
+  FutureOr<Map<String, Object?>> issueMeterTestToken(
+    String requestId,
+    int subclass,
+    int control,
+    int manufacturerCode,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support NMSE meter-test token issuance.',
+      );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -167,6 +187,17 @@ class VirtualHsmIssuer implements TokenIssuer {
   ) =>
       throw NotImplementedException(
         '$name does not support MSE token issuance.',
+      );
+
+  @override
+  Future<Map<String, Object?>> issueMeterTestToken(
+    String requestId,
+    int subclass,
+    int control,
+    int manufacturerCode,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support NMSE meter-test token issuance.',
       );
 }
 
@@ -457,6 +488,41 @@ class PrismIssuer implements TokenIssuer {
             'description': t.description,
           },
       ];
+    } finally {
+      await client.close();
+    }
+  }
+
+  @override
+  Future<Map<String, Object?>> issueMeterTestToken(
+    String requestId,
+    int subclass,
+    int control,
+    int manufacturerCode,
+  ) async {
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      final t = await client.issueMeterTestToken(
+        messageId: requestId,
+        accessToken: accessToken,
+        subclass: subclass,
+        control: control,
+        mfrcode: manufacturerCode,
+      );
+      return {
+        'tokenNo': t.tokenDec,
+        'subclass': t.subclass,
+        'control': t.control,
+        'manufacturerCode': t.mfrcode,
+        'description': t.description,
+        'tokenHex': t.tokenHex,
+      };
     } finally {
       await client.close();
     }

@@ -554,4 +554,92 @@ void main() {
       expect(tokens.first['tokenNo'], '99999999999999999999');
     },
   );
+
+  test(
+    'PrismIssuer.issueMeterTestToken forwards subclass/control/mfrcode '
+    'and maps the reply struct',
+    () async {
+      late int observedSubclass;
+      late int observedControl;
+      late int observedMfrcode;
+      final server = await _FakeServer.bind({
+        'signInWithPassword': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('jwt-nmse');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+        'issueMeterTestToken': (call, args) {
+          observedSubclass = 0;
+          observedControl = 0;
+          observedMfrcode = 0;
+          while (true) {
+            final (type, id) = args.readFieldBegin();
+            if (type == TType.stop) break;
+            if (id == 3 && type == TType.i16) {
+              observedSubclass = args.readI16();
+            } else if (id == 4 && type == TType.i64) {
+              observedControl = args.readI64();
+            } else if (id == 5 && type == TType.i16) {
+              observedMfrcode = args.readI16();
+            } else {
+              args.skip(type);
+            }
+          }
+
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueMeterTestToken', TMessageType.reply, call.seqId),
+          );
+          // success field 0: PrismMeterTestToken struct
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.i16, 11);
+          w.writeI16(observedSubclass);
+          w.writeFieldBegin(TType.i64, 12);
+          w.writeI64(observedControl);
+          w.writeFieldBegin(TType.i16, 13);
+          w.writeI16(observedMfrcode);
+          w.writeFieldBegin(TType.string, 20);
+          w.writeString('NMse:control$observedControl');
+          w.writeFieldBegin(TType.string, 30);
+          w.writeString('88888888888888888888');
+          w.writeFieldBegin(TType.string, 31);
+          w.writeString('0xCAFEBABE');
+          w.writeFieldStop(); // PrismMeterTestToken
+          w.writeFieldStop(); // reply
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 0,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+        ),
+        server.socketFactory,
+      );
+
+      final token = await issuer.issueMeterTestToken('req-nmse', 1, 3, 7);
+
+      expect(observedSubclass, 1);
+      expect(observedControl, 3);
+      expect(observedMfrcode, 7);
+      expect(token['subclass'], 1);
+      expect(token['control'], 3);
+      expect(token['manufacturerCode'], 7);
+      expect(token['description'], 'NMse:control3');
+      expect(token['tokenNo'], '88888888888888888888');
+      expect(token['tokenHex'], '0xCAFEBABE');
+    },
+  );
 }
