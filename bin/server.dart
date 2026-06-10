@@ -194,6 +194,7 @@ Future<void> main(List<String> args) async {
   ProcessSignal.sigint.watch().listen((_) async {
     stdout.writeln('\nshutting down...');
     await server.close(force: true);
+    await issuer.close();
     if (useDb) await Database.close();
     exit(0);
   });
