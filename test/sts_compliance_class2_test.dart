@@ -1,14 +1,21 @@
 // STS compliance test vectors ported from NectarAPI/tokens-service:
 //   src/test/java/ke/co/nectar/token/domain/token/
-//     STSComplianceTests_STS_531_1_0_02_CTSA0{3,4,5,6,7,9,12,13,14}.java
+//     STSComplianceTests_STS_531_1_0_02_CTSA0{1,3,4,5,6,7,9,12,13,14}.java
+//     STSComplianceTests_STS_531_1_0_02_CTSA25.java
 //
 // SCOPE:
-//   - DKGA-02 + EA07 (STA) Class 2 management tokens and Key Change
-//     Tokens (1st/2nd section). All vectors use the standard CTSA
-//     setup: vudk=hex 'abababababababab', SGC='123456', TI='01',
-//     KRN=1, KT=2, KEN=255, PAN='600727000000000009' unless noted.
+//   - STA (EA07) Class 0 TransferElectricityCredit and Class 2
+//     management tokens / Key Change Tokens (1st/2nd section).
+//   - DKGA-02 derived key for CTSA01/03/04/05/06/07/09/12/13/14.
+//   - DKGA-04 derived key for CTSA25 (DKGA-04 + STA combo: 20-byte
+//     vending key, SGC='123457', baseDate sweep 1993/2014/2035).
+//
+//   - Standard DKGA-02 CTSA setup: vudk=hex 'abababababababab',
+//     SGC='123456', TI='01', KRN=1, KT=2, KEN=255,
+//     PAN='600727000000000009' unless noted.
 //
 //   - Skipped vectors are documented inline:
+//       * CTSA01/CTSA25 water/gas steps: electricity-only port.
 //       * CTSA09 step3 multi-minute series: relies on a vending-side
 //         TID rolling counter that the Dart port leaves to callers.
 //         The three time-shifted re-issues are exercised as
@@ -571,6 +578,118 @@ void main() {
         genCc(DateTime.utc(2004, 4, 1, 9, 25, 0), 0x0007),
         equals('51867282903899304686'),
       );
+    });
+  });
+
+  group('STS_531_1_0_02 CTSA01 (TransferElectricityCredit, STA)', () {
+    // Class 0 electricity credit tokens under DKGA-02 + STA. Water/gas
+    // steps (3/4/5/6) intentionally skipped per the Class 0 SubClass
+    // scope.
+    test('step1: PAN 600727000000000009, 01/03/2004 13:55:00, 0.1 kWh → '
+        '23716100501183194197', () {
+      final dk = defaultDecoderKey();
+      final token = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = _tid(DateTime.utc(2004, 3, 1, 13, 55, 0))
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('23716100501183194197'));
+    });
+
+    test('step2: PAN 000001000000000082, 01/03/2004 14:00:00, 0.1 kWh → '
+        '67206107716095682372', () {
+      final dk = _dkga02(
+        keyType: keyType,
+        sgc: sgc,
+        ti: ti,
+        krn: krn,
+        iinStr: '000001',
+        iainStr: '00000000008',
+        vudk: vudk,
+      );
+      final token = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = _tid(DateTime.utc(2004, 3, 1, 14, 0, 0))
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('67206107716095682372'));
+    });
+  });
+
+  group('STS_531_1_0_02 CTSA25 (TransferElectricityCredit, DKGA-04 + STA)', () {
+    // DKGA-04 key derivation but STA encryption. 20-byte vending key,
+    // SGC=123457. Electricity-only steps (1/5/9); water/gas steps
+    // skipped.
+    final vudk04 = VendingUniqueDesKey(
+      _hex('abababababababab949494949494949401234567'),
+    );
+    final sgc04 = SupplyGroupCode('123457');
+    final defaultPan = MeterPrimaryAccountNumber(
+      issuerIdentificationNumber: IssuerIdentificationNumber('600727'),
+      individualAccountIdentificationNumber:
+          IndividualAccountIdentificationNumber('00000000000'),
+    );
+
+    DecoderKey dkga04({
+      required BaseDate baseDate,
+      required KeyRevisionNumber krn,
+    }) => DecoderKeyGeneratorAlgorithm04(
+      baseDate: baseDate,
+      tariffIndex: ti,
+      supplyGroupCode: sgc04,
+      keyType: keyType,
+      keyRevisionNumber: krn,
+      encryptionAlgorithm: ea07,
+      meterPan: defaultPan,
+      vendingKey: vudk04,
+    ).generate();
+
+    test('step1: baseDate=1993, KRN=1, 01/01/2009 08:00:00, 0.1 kWh → '
+        '15697331168573253829', () {
+      final dk = dkga04(
+        baseDate: BaseDate.date1993,
+        krn: KeyRevisionNumber(1),
+      );
+      final token = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = _tid(DateTime.utc(2009, 1, 1, 8, 0, 0))
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('15697331168573253829'));
+    });
+
+    test('step5: baseDate=2014, KRN=4, 01/01/2014 08:00:00, 0.1 kWh → '
+        '20324881626382980759', () {
+      final dk = dkga04(
+        baseDate: BaseDate.date2014,
+        krn: KeyRevisionNumber(4),
+      );
+      final token = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = TokenIdentifier(
+          BaseDate.date2014,
+          timeOfIssue: DateTime.utc(2014, 1, 1, 8, 0, 0),
+        )
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('20324881626382980759'));
+    });
+
+    test('step9: baseDate=2035, KRN=5, 01/01/2035 08:00:00, 0.1 kWh → '
+        '09239624803025986815', () {
+      final dk = dkga04(
+        baseDate: BaseDate.date2035,
+        krn: KeyRevisionNumber(5),
+      );
+      final token = TransferElectricityCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = TokenIdentifier(
+          BaseDate.date2035,
+          timeOfIssue: DateTime.utc(2035, 1, 1, 8, 0, 0),
+        )
+        ..randomNo = _rnd5;
+      TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('09239624803025986815'));
     });
   });
 }
