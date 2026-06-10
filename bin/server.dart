@@ -23,6 +23,13 @@
 ///                         `./meters.json`. Set to `:none:` to
 ///                         disable meter-registry endpoints and the
 ///                         `meter_serial` shortcut on POST /v1/tokens.
+///   STS_DB_HOST         — if set, the audit log + meter registry
+///                         are backed by the shared MySQL DB
+///                         (`sts_vending`) the Laravel dashboard
+///                         owns, overriding the JSON-file backends
+///                         above. See `Database` for the full env
+///                         list (HOST / PORT / DATABASE / USERNAME
+///                         / PASSWORD / POOL_SIZE).
 ///
 /// Example:
 ///   PORT=2000 VENDING_KEY_HEX=0123456789ABCDEF dart run bin/server.dart
@@ -32,6 +39,9 @@ import 'dart:io';
 
 import 'package:nectar_sts_dart/nectar_sts_dart.dart';
 import 'package:nectar_sts_dart/src/server/api_server.dart';
+import 'package:nectar_sts_dart/src/server/database.dart';
+import 'package:nectar_sts_dart/src/server/db_meter_registry.dart';
+import 'package:nectar_sts_dart/src/server/db_vending_log.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 const _defaultVendingKeyHex = '0123456789ABCDEF';
@@ -62,34 +72,59 @@ Future<void> main(List<String> args) async {
   }
 
   final hsm = VirtualHsm(VendingCommonDesKey(parseHexKey(keyHex)));
-  final VendingLog? log;
-  if (logPath == ':none:') {
-    log = null;
-    stderr.writeln(
-      '[warn] VENDING_LOG_FILE=:none: — audit log + TID-collision '
-      'check are DISABLED.',
-    );
-  } else {
-    log = VendingLog.loadOrCreate(logPath);
-    stdout.writeln(
-      '[info] vending log: ${File(logPath).absolute.path} '
-      '(${log.length} prior issue(s) loaded)',
-    );
-  }
 
-  final MeterRegistry? registry;
-  if (registryPath == ':none:') {
-    registry = null;
-    stderr.writeln(
-      '[warn] METER_REGISTRY_FILE=:none: — meter-registry endpoints '
-      'and the meter_serial shortcut are DISABLED.',
+  final useDb = Database.isConfigured;
+  final VendingLogStore? log;
+  final MeterStore? registry;
+
+  if (useDb) {
+    stdout.writeln(
+      '[info] STS_DB_HOST is set — using MySQL-backed registry + log '
+      '(shared with the Laravel sts-vending dashboard). JSON file '
+      'paths are IGNORED in DB mode.',
+    );
+    final dbRegistry = DbMeterRegistry();
+    final dbLog = DbVendingLog();
+    await dbRegistry.refreshCount();
+    await dbLog.refreshCount();
+    registry = dbRegistry;
+    log = dbLog;
+    stdout.writeln(
+      '[info] db registry: ${dbRegistry.length} meter(s) currently in DB',
+    );
+    stdout.writeln(
+      '[info] db vending log: ${dbLog.length} prior issue(s) in DB',
     );
   } else {
-    registry = MeterRegistry.loadOrCreate(registryPath);
-    stdout.writeln(
-      '[info] meter registry: ${File(registryPath).absolute.path} '
-      '(${registry.length} meter(s) loaded)',
-    );
+    if (logPath == ':none:') {
+      log = null;
+      stderr.writeln(
+        '[warn] VENDING_LOG_FILE=:none: — audit log + TID-collision '
+        'check are DISABLED.',
+      );
+    } else {
+      final fileLog = VendingLog.loadOrCreate(logPath);
+      log = fileLog;
+      stdout.writeln(
+        '[info] vending log: ${File(logPath).absolute.path} '
+        '(${fileLog.length} prior issue(s) loaded)',
+      );
+    }
+
+    if (registryPath == ':none:') {
+      registry = null;
+      stderr.writeln(
+        '[warn] METER_REGISTRY_FILE=:none: — meter-registry endpoints '
+        'and the meter_serial shortcut are DISABLED.',
+      );
+    } else {
+      final fileRegistry = MeterRegistry.loadOrCreate(registryPath);
+      registry = fileRegistry;
+      stdout.writeln(
+        '[info] meter registry: ${File(registryPath).absolute.path} '
+        '(${fileRegistry.length} meter(s) loaded)',
+      );
+    }
   }
 
   final handler = buildApiHandler(
@@ -118,6 +153,7 @@ Future<void> main(List<String> args) async {
   ProcessSignal.sigint.watch().listen((_) async {
     stdout.writeln('\nshutting down...');
     await server.close(force: true);
+    if (useDb) await Database.close();
     exit(0);
   });
 }

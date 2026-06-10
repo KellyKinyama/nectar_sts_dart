@@ -598,13 +598,130 @@ Sample `meters.json`:
 }
 ```
 
+### MySQL backend (shared with the Laravel `sts-vending` dashboard)
+
+For real-world pilots — where a separate admin UI provisions supply
+groups and links meters to vending keys — the JSON files become the
+wrong shape. Instead, point the server at the same MySQL database
+the [Laravel `sts-vending` dashboard](../web/laravel/sts-vending)
+owns and both layers see the same rows. The Dart server **does the
+vending** (mint + decode tokens), the Laravel dashboard **does the
+admin** (CRUD on `supply_groups`, `vending_keys`, `tariffs`,
+`customers`, browse `meters` + `tokens`).
+
+When `STS_DB_HOST` is set in the environment, `bin/server.dart`
+swaps both `MeterRegistry` and `VendingLog` for their DB-backed
+counterparts (`DbMeterRegistry` and `DbVendingLog`) and ignores the
+`VENDING_LOG_FILE` / `METER_REGISTRY_FILE` paths entirely.
+
+```powershell
+$env:STS_DB_HOST     = '127.0.0.1'
+$env:STS_DB_PORT     = '3306'
+$env:STS_DB_DATABASE = 'sts_vending'
+$env:STS_DB_USERNAME = 'root'
+$env:STS_DB_PASSWORD = ''
+$env:STS_DB_POOL_SIZE = '5'      # optional, default 5
+$env:VENDING_KEY_HEX = '0123456789ABCDEF'
+dart run bin/server.dart
+```
+
+The HTTP surface (`/v1/meters`, `/v1/tokens`, etc.) is **unchanged**
+— callers don't need to know which backend is wired up. Internally:
+
+| In-memory backend | DB backend | Backed by |
+| --- | --- | --- |
+| `MeterRegistry` | `DbMeterRegistry` | tables `meters`, `supply_groups`, `vending_keys` |
+| `VendingLog`    | `DbVendingLog`    | table `tokens` (with the audit-only fields stashed in the `engine_response` JSON column) |
+
+Both new classes implement the shared `MeterStore` / `VendingLogStore`
+interfaces declared in [`meter_registry.dart`](lib/src/server/meter_registry.dart)
+and [`vending_log.dart`](lib/src/server/vending_log.dart). The pooled
+connection lives in [`Database`](lib/src/server/database.dart)
+(`eloquent` package, `pool: true`, up to `STS_DB_POOL_SIZE`
+connections so the Dart side doesn't crowd out the Laravel app).
+
+#### Division of responsibilities
+
+| Laravel dashboard owns | Dart server owns |
+| --- | --- |
+| `supply_groups` rows (SGC → utility, region) | — |
+| `vending_keys` rows (algorithm, KT, TI, KRN, KEN, BD, `vudk_blob` encrypted with Laravel `APP_KEY`) | — |
+| Linking `meters.vending_key_id` once a meter has been registered | — |
+| Browsing `meters` and `tokens` | Creating `meters` rows via `POST /v1/meters` |
+| — | Inserting `tokens` rows via `POST /v1/tokens` |
+
+> **The vending key is one-way.** `vending_keys.vudk_blob` is
+> encrypted with Laravel's `APP_KEY` and the Dart server never
+> reads it. The Dart server uses its own `VENDING_KEY_HEX` env var
+> for token generation and treats `vending_keys` rows as metadata
+> (algorithm, KT, TI, KRN, KEN, BD) only. Keep both in sync by
+> personalizing meters against the same physical key.
+
+#### Pre-provisioning rules
+
+Two rows must exist in the DB **before** the Dart server can mint a
+token for a meter — both are created by the Laravel admin:
+
+1. **Supply group.** `POST /v1/meters` fails with `412 Precondition Failed`
+   (`MissingForeignRowException`) when the `supply_group_code`
+   in the request body doesn't match any `supply_groups.code` row.
+2. **Linked vending key.** `POST /v1/tokens` fails with the same
+   shape (`DbVendingLogPersistenceException`, surfaced as `412` /
+   `409`) when the meter row has `vending_key_id = NULL`. The Dart
+   server registers meters without a vending-key link; the Laravel
+   admin links the right key in the dashboard before vending starts.
+
+These guardrails are deliberate — neither layer silently creates
+rows the other one owns.
+
+#### Schema bridging
+
+A handful of audit-only fields the Dart server tracks aren't in the
+Laravel schema yet (`tid_minutes`, `random_no`,
+`identity_fingerprint`, `request_id`, the full identity tuple
+used to derive the decoder key). They are stashed inside the
+`tokens.engine_response` JSON column. TID-collision detection
+(`409` on `POST /v1/tokens`) queries them with `JSON_EXTRACT`:
+
+```sql
+SELECT * FROM tokens
+ WHERE meter_id = ?
+   AND JSON_EXTRACT(engine_response, '$.tid_minutes') = ?
+```
+
+The dashboard's table views key on the first-class columns
+(`amount_kwh`, `currency`, `issued_at`, `token_class`,
+`token_sub_class`, `token_kind`, `payload`); the JSON column is the
+overflow bucket the Dart engine reads back when serving
+`GET /v1/tokens/{tokenNo}`.
+
+#### Naming map (Laravel ⇄ Dart)
+
+| Laravel column | Dart field | Notes |
+| --- | --- | --- |
+| `meters.decoder_serial_number` | `RegisteredMeter.serial` | 1–8 chars per the Laravel migration. |
+| `meters.iin` | `MeterIdentity.issuerIdentificationNumber` | 6 digits. |
+| `meters.iain` | `MeterIdentity.individualAccountIdentificationNumber` | 11 digits (auto-padded to 12 in the PAN). |
+| `meters.pan` | `_composePan(identity)` | `iin || pad('0') || iain` — exactly 18 chars. |
+| `supply_groups.code` | `MeterIdentity.supplyGroupCode` | 6 digits. |
+| `vending_keys.algorithm` (`DKGA02`/`DKGA04`) | `MeterIdentity.decoderKeyGenerationAlgorithm` (`'02'`/`'04'`) | `_normaliseDkga`. |
+| `vending_keys.encryption_algorithm` (`EA07`/`EA11`) | `RegisteredMeter.encryptionAlgorithm` (`'sta'`/`'dea'`) | `_normaliseEa`. |
+| `tokens.engine_response.tid_minutes` (JSON) | `IssuedTokenRecord.tidMinutes` | indexed via `JSON_EXTRACT` for collision query. |
+| `tokens.engine_response.identity_fingerprint` (JSON) | `IssuedTokenRecord.identityFingerprint` | `"$iin|$iain|$kt|$sgc|$ti|$krn|$dkga"`. |
+
+#### Switching back to the JSON files
+
+Unset `STS_DB_HOST` and the server falls back to JSON-file mode on
+the next start. No data migrates automatically between the two
+backends; rows in one are invisible to the other.
+
 ## Tests
 
 ```
 dart test
 ```
 
-Currently 114 tests, covering base layer, DKGA-02 / DKGA-04, EA07 /
+Currently 227+ tests, covering base layer, DKGA-02 / DKGA-04, EA07 /
 EA09 / MISTY1 (EA11 — RFC 2994 reference vectors + 100-iteration
 random round-trip property test), Class 0 + Class 1 + Class 2 token
 round-trips, the full 4-section MISTY1 KCT flow (generator → decoder
@@ -622,6 +739,39 @@ shortcut with identity-conflict rejection, and persistence across
 restarts), and the `VirtualMeter` simulator (provisioning, balance
 accrual, replay rejection, 1st+2nd section STA KCT staging + key
 rotation, and JSON save/load across restarts).
+
+The MySQL-backend end-to-end tests in
+[`test/db_store_test.dart`](test/db_store_test.dart) auto-skip
+unless `STS_DB_HOST` is set. To exercise them against a local
+WAMP / Laravel `sts-vending` DB:
+
+```powershell
+$env:STS_DB_HOST     = '127.0.0.1'
+$env:STS_DB_DATABASE = 'sts_vending'
+$env:STS_DB_USERNAME = 'root'
+$env:STS_DB_PASSWORD = ''
+$env:STS_DB_SSLMODE  = 'require'   # see note below
+dart test test/db_store_test.dart
+```
+
+These tests seed a throwaway supply-group (`code=987654`) and
+vending-key row in `setUp` and delete them in `tearDown`, so they
+leave the Laravel admin data untouched.
+
+**MySQL 8/9 auth note.** The underlying `mysql_dart` driver refuses
+the default `caching_sha2_password` auth plugin over a plaintext
+socket. Two ways out:
+
+1. `$env:STS_DB_SSLMODE = 'require'` — flips the client into TLS
+   mode, which MySQL 8/9 supports out of the box with the
+   auto-generated server cert.
+2. Switch the DB user to `mysql_native_password` on the server:
+   ```sql
+   ALTER USER 'root'@'localhost'
+     IDENTIFIED WITH mysql_native_password BY '';
+   FLUSH PRIVILEGES;
+   ```
+   Then `STS_DB_SSLMODE` can stay unset.
 
 ## Dependencies
 

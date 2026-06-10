@@ -18,6 +18,12 @@ dependencies:
   # exposes a NectarAPI-compatible REST surface.
   shelf: ^1.4.0
   shelf_router: ^1.1.0
+  # Optional MySQL-backed meter registry + vending audit log, sharing
+  # the schema written by the Laravel `sts-vending` dashboard.
+  # See `lib/src/server/database.dart` + `db_queries.dart` — pattern
+  # mirrors `dart-ari/lib/ari/api/db_queries.dart`.
+  eloquent: ^3.2.1
+  uuid: ^4.5.1
 
 dev_dependencies:
   test: ^1.25.0

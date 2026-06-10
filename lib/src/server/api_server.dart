@@ -29,7 +29,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../../nectar_sts_dart.dart';
-import '../meter/virtual_meter.dart' show MeterIdentity;
+import 'db_queries.dart' show MissingForeignRowException;
 import 'meter_registry.dart';
 import 'vending_log.dart';
 
@@ -63,8 +63,8 @@ String _newRequestId() =>
 Handler buildApiHandler(
   VirtualHsm hsm, {
   String? bearerToken,
-  VendingLog? log,
-  MeterRegistry? registry,
+  VendingLogStore? log,
+  MeterStore? registry,
 }) {
   final router = Router()
     ..get('/healthz', _healthHandler)
@@ -103,13 +103,13 @@ Response _healthHandler(Request request) =>
 Future<Response> _generateHandler(
   Request request,
   VirtualHsm hsm,
-  VendingLog? log,
-  MeterRegistry? registry,
+  VendingLogStore? log,
+  MeterStore? registry,
 ) async {
   final requestId = _newRequestId();
   final rawBody = await _readJsonBody(request);
   _rejectSensitiveParams(rawBody);
-  final resolved = _resolveMeterSerial(rawBody, registry);
+  final resolved = await _resolveMeterSerial(rawBody, registry);
   final params = resolved.params;
   _validateAmount(params);
 
@@ -122,18 +122,21 @@ Future<Response> _generateHandler(
     final fp = _identityFingerprint(params);
     if (tid != null &&
         fp != null &&
-        log.hasTidCollision(identityFingerprint: fp, tidMinutes: tid)) {
-      final prior = log.issues.firstWhere(
-        (r) => r.tidMinutes == tid && r.identityFingerprint == fp,
+        await log.tidExists(identityFingerprint: fp, tidMinutes: tid)) {
+      final prior = await log.findCollision(
+        identityFingerprint: fp,
+        tidMinutes: tid,
       );
+      final priorMsg = prior == null
+          ? ''
+          : ' (token_no=${prior.tokenNo}, request_id=${prior.requestId})';
       return _json(
         409,
         _envelope(
           code: 409,
           message:
               'TID collision: a token with tid_minutes=$tid was already '
-              'issued for this meter (token_no=${prior.tokenNo}, '
-              'request_id=${prior.requestId}). Use a fresh token_id.',
+              'issued for this meter$priorMsg. Use a fresh token_id.',
           requestId: requestId,
         ),
       );
@@ -143,7 +146,9 @@ Future<Response> _generateHandler(
   final token = hsm.generateToken(requestId, params);
 
   if (log != null) {
-    log.append(_recordFor(requestId, token, params, resolved.meterSerial));
+    await log.record(
+      _recordFor(requestId, token, params, resolved.meterSerial),
+    );
   }
 
   return _json(
@@ -164,12 +169,12 @@ Future<Response> _decodeHandler(
   Request request,
   VirtualHsm hsm,
   String tokenNo,
-  MeterRegistry? registry,
+  MeterStore? registry,
 ) async {
   final requestId = _newRequestId();
   final rawBody = await _readJsonBody(request);
   _rejectSensitiveParams(rawBody);
-  final params = _resolveMeterSerial(rawBody, registry).params;
+  final params = (await _resolveMeterSerial(rawBody, registry)).params;
   final decoded = hsm.decodeToken(requestId, tokenNo, params);
 
   return _json(
@@ -183,7 +188,7 @@ Future<Response> _decodeHandler(
   );
 }
 
-Future<Response> _listHandler(Request request, VendingLog? log) async {
+Future<Response> _listHandler(Request request, VendingLogStore? log) async {
   final requestId = _newRequestId();
   if (log == null) {
     return _json(
@@ -197,7 +202,7 @@ Future<Response> _listHandler(Request request, VendingLog? log) async {
   }
   final iin = request.url.queryParameters['iin'];
   final iain = request.url.queryParameters['iain'];
-  final matches = log.findByMeter(iin: iin, iain: iain).toList();
+  final matches = await log.forMeter(iin: iin, iain: iain);
   return _json(
     200,
     _envelope(
@@ -214,7 +219,7 @@ Future<Response> _listHandler(Request request, VendingLog? log) async {
 
 Future<Response> _lookupHandler(
   Request request,
-  VendingLog? log,
+  VendingLogStore? log,
   String tokenNo,
 ) async {
   final requestId = _newRequestId();
@@ -228,7 +233,7 @@ Future<Response> _lookupHandler(
       ),
     );
   }
-  final hit = log.findByTokenNo(tokenNo);
+  final hit = await log.lookupToken(tokenNo);
   if (hit == null) {
     return _json(
       404,
@@ -263,7 +268,7 @@ Response _registryDisabled(String requestId) => _json(
 
 Future<Response> _registerMeterHandler(
   Request request,
-  MeterRegistry? registry,
+  MeterStore? registry,
 ) async {
   final requestId = _newRequestId();
   if (registry == null) return _registryDisabled(requestId);
@@ -324,13 +329,25 @@ Future<Response> _registerMeterHandler(
     registeredAt: DateTime.now().toUtc(),
   );
   try {
-    registry.register(meter);
+    await registry.add(meter);
   } on DuplicateMeterSerialException {
     return _json(
       409,
       _envelope(
         code: 409,
         message: 'Meter serial "$serial" is already registered',
+        requestId: requestId,
+      ),
+    );
+  } on MissingForeignRowException catch (e) {
+    return _json(
+      412,
+      _envelope(
+        code: 412,
+        message:
+            'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
+            'Create it in the Laravel dashboard before registering this '
+            'meter.',
         requestId: requestId,
       ),
     );
@@ -349,19 +366,20 @@ Future<Response> _registerMeterHandler(
 
 Future<Response> _listMetersHandler(
   Request request,
-  MeterRegistry? registry,
+  MeterStore? registry,
 ) async {
   final requestId = _newRequestId();
   if (registry == null) return _registryDisabled(requestId);
+  final meters = await registry.list();
   return _json(
     200,
     _envelope(
       code: 200,
-      message: '${registry.length} meter(s) registered',
+      message: '${meters.length} meter(s) registered',
       requestId: requestId,
       data: {
-        'count': registry.length,
-        'meters': registry.meters.map((m) => m.toJson()).toList(),
+        'count': meters.length,
+        'meters': meters.map((m) => m.toJson()).toList(),
       },
     ),
   );
@@ -369,12 +387,12 @@ Future<Response> _listMetersHandler(
 
 Future<Response> _getMeterHandler(
   Request request,
-  MeterRegistry? registry,
+  MeterStore? registry,
   String serial,
 ) async {
   final requestId = _newRequestId();
   if (registry == null) return _registryDisabled(requestId);
-  final hit = registry.find(serial);
+  final hit = await registry.lookup(serial);
   if (hit == null) {
     return _json(
       404,
@@ -398,12 +416,12 @@ Future<Response> _getMeterHandler(
 
 Future<Response> _deleteMeterHandler(
   Request request,
-  MeterRegistry? registry,
+  MeterStore? registry,
   String serial,
 ) async {
   final requestId = _newRequestId();
   if (registry == null) return _registryDisabled(requestId);
-  final removed = registry.remove(serial);
+  final removed = await registry.delete(serial);
   if (!removed) {
     return _json(
       404,
@@ -473,10 +491,10 @@ class _ResolvedParams {
 /// If [body] contains `meter_serial`, look it up in [registry] and
 /// produce a params map with the registry's identity merged in.
 /// Otherwise return [body] unchanged.
-_ResolvedParams _resolveMeterSerial(
+Future<_ResolvedParams> _resolveMeterSerial(
   Map<String, dynamic> body,
-  MeterRegistry? registry,
-) {
+  MeterStore? registry,
+) async {
   final serial = body['meter_serial'];
   if (serial == null) return _ResolvedParams(body, null);
   if (registry == null) {
@@ -485,7 +503,7 @@ _ResolvedParams _resolveMeterSerial(
       '(set METER_REGISTRY_FILE)',
     );
   }
-  final hit = registry.find(serial.toString());
+  final hit = await registry.lookup(serial.toString());
   if (hit == null) {
     throw _MeterNotFound(serial.toString());
   }

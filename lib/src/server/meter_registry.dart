@@ -68,7 +68,31 @@ class DuplicateMeterSerialException implements Exception {
   String toString() => 'DuplicateMeterSerialException: $serial';
 }
 
-class MeterRegistry {
+/// Async-only surface that the REST layer consumes. Both the
+/// JSON-file [MeterRegistry] and the MySQL-backed `DbMeterRegistry`
+/// implement this so handlers don't have to know which is wired up.
+///
+/// Method names are intentionally distinct from the sync API on
+/// [MeterRegistry] so the in-memory class can keep both.
+abstract interface class MeterStore {
+  /// Look up by serial. Returns `null` when not registered.
+  Future<RegisteredMeter?> lookup(String serial);
+
+  /// Persist [meter]. Throws [DuplicateMeterSerialException] on
+  /// serial clash.
+  Future<void> add(RegisteredMeter meter);
+
+  /// Delete by serial. Returns `true` if a row was removed.
+  Future<bool> delete(String serial);
+
+  /// All meters currently registered.
+  Future<List<RegisteredMeter>> list();
+
+  /// Row count without materialising the full list.
+  Future<int> total();
+}
+
+class MeterRegistry implements MeterStore {
   final List<RegisteredMeter> _meters;
   final DateTime createdAt;
   String? filePath;
@@ -107,6 +131,23 @@ class MeterRegistry {
     if (changed && filePath != null) save();
     return changed;
   }
+
+  // ---- MeterStore (async) -------------------------------------
+
+  @override
+  Future<RegisteredMeter?> lookup(String serial) async => find(serial);
+
+  @override
+  Future<void> add(RegisteredMeter meter) async => register(meter);
+
+  @override
+  Future<bool> delete(String serial) async => remove(serial);
+
+  @override
+  Future<List<RegisteredMeter>> list() async => meters;
+
+  @override
+  Future<int> total() async => length;
 
   // ---- persistence --------------------------------------------
 

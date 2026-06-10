@@ -118,7 +118,41 @@ class IssuedTokenRecord {
       );
 }
 
-class VendingLog {
+/// Async-only surface that the REST layer consumes. Both the
+/// JSON-file [VendingLog] and the MySQL-backed `DbVendingLog`
+/// implement this so handlers don't have to know which is wired up.
+///
+/// Method names are intentionally distinct from the sync API on
+/// [VendingLog] so the in-memory class can keep both.
+abstract interface class VendingLogStore {
+  /// Persist [r]. May throw if the backing store rejects the row
+  /// (e.g. the DB store requires a registered meter).
+  Future<void> record(IssuedTokenRecord r);
+
+  /// `true` when `(identityFingerprint, tidMinutes)` has already
+  /// been issued — vending would produce a replay token.
+  Future<bool> tidExists({
+    required String identityFingerprint,
+    required int? tidMinutes,
+  });
+
+  /// Returns the colliding record, for richer error messages.
+  Future<IssuedTokenRecord?> findCollision({
+    required String identityFingerprint,
+    required int tidMinutes,
+  });
+
+  /// Lookup by 20-digit token number.
+  Future<IssuedTokenRecord?> lookupToken(String tokenNo);
+
+  /// All tokens for a meter (filter by `iin` and/or `iain`).
+  Future<List<IssuedTokenRecord>> forMeter({String? iin, String? iain});
+
+  /// Row count without materialising the full list.
+  Future<int> total();
+}
+
+class VendingLog implements VendingLogStore {
   final List<IssuedTokenRecord> _issues;
   final DateTime createdAt;
 
@@ -171,6 +205,45 @@ class VendingLog {
         (r) =>
             (iin == null || r.iin == iin) && (iain == null || r.iain == iain),
       );
+
+  // ---- VendingLogStore (async) --------------------------------
+
+  @override
+  Future<void> record(IssuedTokenRecord r) async => append(r);
+
+  @override
+  Future<bool> tidExists({
+    required String identityFingerprint,
+    required int? tidMinutes,
+  }) async => hasTidCollision(
+    identityFingerprint: identityFingerprint,
+    tidMinutes: tidMinutes,
+  );
+
+  @override
+  Future<IssuedTokenRecord?> findCollision({
+    required String identityFingerprint,
+    required int tidMinutes,
+  }) async {
+    for (final r in _issues) {
+      if (r.tidMinutes == tidMinutes &&
+          r.identityFingerprint == identityFingerprint) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<IssuedTokenRecord?> lookupToken(String tokenNo) async =>
+      findByTokenNo(tokenNo);
+
+  @override
+  Future<List<IssuedTokenRecord>> forMeter({String? iin, String? iain}) async =>
+      findByMeter(iin: iin, iain: iain).toList();
+
+  @override
+  Future<int> total() async => length;
 
   // ---- persistence --------------------------------------------
 
