@@ -71,6 +71,13 @@ class _UnhealthyIssuer implements TokenIssuer {
     Map<String, dynamic> params,
   ) =>
       throw UnimplementedError();
+
+  @override
+  Future<List<Map<String, Object?>>> fetchTokenResult(
+    String requestId,
+    String originalRequestId,
+  ) =>
+      throw UnimplementedError();
 }
 
 Map<String, dynamic> _baseParams() => {
@@ -265,21 +272,18 @@ void main() {
       },
     );
 
-    test(
-      'POST /v1/tokens/meter-test -> 400 when control missing',
-      () async {
-        final handler = buildApiHandler(_hsm());
-        final r = await _post(handler, '/v1/tokens/meter-test', {
-          'subclass': 1,
-          'manufacturer_code': 7,
-        });
-        expect(r['status'], 400);
-        expect(
-          ((r['body'] as Map)['status'] as Map)['message'],
-          contains('control'),
-        );
-      },
-    );
+    test('POST /v1/tokens/meter-test -> 400 when control missing', () async {
+      final handler = buildApiHandler(_hsm());
+      final r = await _post(handler, '/v1/tokens/meter-test', {
+        'subclass': 1,
+        'manufacturer_code': 7,
+      });
+      expect(r['status'], 400);
+      expect(
+        ((r['body'] as Map)['status'] as Map)['message'],
+        contains('control'),
+      );
+    });
 
     test(
       'POST /v1/tokens/credit/*-currency -> 501 NotImplemented for VirtualHsm',
@@ -301,6 +305,19 @@ void main() {
             contains('currency-credit'),
           );
         }
+      },
+    );
+
+    test(
+      'GET /v1/tokens/results/<id> -> 501 NotImplemented for VirtualHsm',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _get(handler, '/v1/tokens/results/req-original-123');
+        expect(r['status'], 501);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          contains('token-result replay'),
+        );
       },
     );
 

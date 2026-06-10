@@ -148,6 +148,24 @@ abstract class TokenIssuer {
       throw NotImplementedException(
         '$name does not support currency-credit token issuance.',
       );
+
+  /// Idempotency replay: re-fetch the tokens previously issued for
+  /// [originalRequestId]. Used when the original RPC timed out or
+  /// the connection dropped before Prism's reply could be read —
+  /// Prism keeps a short-lived cache keyed by the original request's
+  /// `messageId`.
+  ///
+  /// Returns the same flat
+  /// `{tokenNo, subclass, description, scaledAmount}` shape as the
+  /// credit/KCT/MSE issue methods, since the underlying Thrift RPC
+  /// returns `List<PrismToken>`.
+  FutureOr<List<Map<String, Object?>>> fetchTokenResult(
+    String requestId,
+    String originalRequestId,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support token-result replay.',
+      );
 }
 
 /// In-process issuer: derives the decoder key and runs the cipher
@@ -226,6 +244,15 @@ class VirtualHsmIssuer implements TokenIssuer {
   ) =>
       throw NotImplementedException(
         '$name does not support currency-credit token issuance.',
+      );
+
+  @override
+  Future<List<Map<String, Object?>>> fetchTokenResult(
+    String requestId,
+    String originalRequestId,
+  ) =>
+      throw NotImplementedException(
+        '$name does not support token-result replay.',
       );
 }
 
@@ -592,6 +619,38 @@ class PrismIssuer implements TokenIssuer {
         transferAmount: scaled,
         tokenTime: tokenTime,
         flags: prism.TokenIssueFlags.externalClock,
+      );
+      return [
+        for (final t in tokens)
+          {
+            'tokenNo': t.tokenDec,
+            'subclass': t.subclass,
+            'description': t.description,
+            'scaledAmount': t.scaledAmount,
+          },
+      ];
+    } finally {
+      await client.close();
+    }
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> fetchTokenResult(
+    String requestId,
+    String originalRequestId,
+  ) async {
+    final client = await prism.TokenApiClient.connect(_factory);
+    try {
+      final accessToken = await client.signInWithPassword(
+        messageId: requestId,
+        realm: config.realm,
+        username: config.username,
+        password: config.password,
+      );
+      final tokens = await client.fetchTokenResult(
+        messageId: requestId,
+        accessToken: accessToken,
+        reqMessageId: originalRequestId,
       );
       return [
         for (final t in tokens)

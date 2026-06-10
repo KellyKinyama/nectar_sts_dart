@@ -557,177 +557,173 @@ void main() {
   );
 
   test(
-    'PrismIssuer.issueMeterTestToken forwards subclass/control/mfrcode '
-    'and maps the reply struct',
-    () async {
-      late int observedSubclass;
-      late int observedControl;
-      late int observedMfrcode;
-      final server = await _FakeServer.bind({
-        'signInWithPassword': (call, args) {
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
-          );
-          w.writeFieldBegin(TType.struct, 0);
-          w.writeFieldBegin(TType.string, 1);
-          w.writeString('jwt-nmse');
-          w.writeFieldStop();
-          w.writeFieldStop();
-          return w.takeBytes();
-        },
-        'issueMeterTestToken': (call, args) {
-          observedSubclass = 0;
-          observedControl = 0;
-          observedMfrcode = 0;
-          while (true) {
-            final (type, id) = args.readFieldBegin();
-            if (type == TType.stop) break;
-            if (id == 3 && type == TType.i16) {
-              observedSubclass = args.readI16();
-            } else if (id == 4 && type == TType.i64) {
-              observedControl = args.readI64();
-            } else if (id == 5 && type == TType.i16) {
-              observedMfrcode = args.readI16();
-            } else {
-              args.skip(type);
-            }
+      'PrismIssuer.issueMeterTestToken forwards subclass/control/mfrcode '
+      'and maps the reply struct', () async {
+    late int observedSubclass;
+    late int observedControl;
+    late int observedMfrcode;
+    final server = await _FakeServer.bind({
+      'signInWithPassword': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('jwt-nmse');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+      'issueMeterTestToken': (call, args) {
+        observedSubclass = 0;
+        observedControl = 0;
+        observedMfrcode = 0;
+        while (true) {
+          final (type, id) = args.readFieldBegin();
+          if (type == TType.stop) break;
+          if (id == 3 && type == TType.i16) {
+            observedSubclass = args.readI16();
+          } else if (id == 4 && type == TType.i64) {
+            observedControl = args.readI64();
+          } else if (id == 5 && type == TType.i16) {
+            observedMfrcode = args.readI16();
+          } else {
+            args.skip(type);
           }
+        }
 
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('issueMeterTestToken', TMessageType.reply, call.seqId),
-          );
-          // success field 0: PrismMeterTestToken struct
-          w.writeFieldBegin(TType.struct, 0);
-          w.writeFieldBegin(TType.i16, 11);
-          w.writeI16(observedSubclass);
-          w.writeFieldBegin(TType.i64, 12);
-          w.writeI64(observedControl);
-          w.writeFieldBegin(TType.i16, 13);
-          w.writeI16(observedMfrcode);
-          w.writeFieldBegin(TType.string, 20);
-          w.writeString('NMse:control$observedControl');
-          w.writeFieldBegin(TType.string, 30);
-          w.writeString('88888888888888888888');
-          w.writeFieldBegin(TType.string, 31);
-          w.writeString('0xCAFEBABE');
-          w.writeFieldStop(); // PrismMeterTestToken
-          w.writeFieldStop(); // reply
-          return w.takeBytes();
-        },
-      });
-      addTearDown(server.close);
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('issueMeterTestToken', TMessageType.reply, call.seqId),
+        );
+        // success field 0: PrismMeterTestToken struct
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.i16, 11);
+        w.writeI16(observedSubclass);
+        w.writeFieldBegin(TType.i64, 12);
+        w.writeI64(observedControl);
+        w.writeFieldBegin(TType.i16, 13);
+        w.writeI16(observedMfrcode);
+        w.writeFieldBegin(TType.string, 20);
+        w.writeString('NMse:control$observedControl');
+        w.writeFieldBegin(TType.string, 30);
+        w.writeString('88888888888888888888');
+        w.writeFieldBegin(TType.string, 31);
+        w.writeString('0xCAFEBABE');
+        w.writeFieldStop(); // PrismMeterTestToken
+        w.writeFieldStop(); // reply
+        return w.takeBytes();
+      },
+    });
+    addTearDown(server.close);
 
-      final issuer = PrismIssuer.forTesting(
-        const PrismConfig(
-          host: '127.0.0.1',
-          port: 0,
-          realm: 'STS',
-          username: 'vendor',
-          password: 'pw',
-        ),
-        server.socketFactory,
-      );
+    final issuer = PrismIssuer.forTesting(
+      const PrismConfig(
+        host: '127.0.0.1',
+        port: 0,
+        realm: 'STS',
+        username: 'vendor',
+        password: 'pw',
+      ),
+      server.socketFactory,
+    );
 
-      final token = await issuer.issueMeterTestToken('req-nmse', 1, 3, 7);
+    final token = await issuer.issueMeterTestToken('req-nmse', 1, 3, 7);
 
-      expect(observedSubclass, 1);
-      expect(observedControl, 3);
-      expect(observedMfrcode, 7);
-      expect(token['subclass'], 1);
-      expect(token['control'], 3);
-      expect(token['manufacturerCode'], 7);
-      expect(token['description'], 'NMse:control3');
-      expect(token['tokenNo'], '88888888888888888888');
-      expect(token['tokenHex'], '0xCAFEBABE');
-    },
-  );
+    expect(observedSubclass, 1);
+    expect(observedControl, 3);
+    expect(observedMfrcode, 7);
+    expect(token['subclass'], 1);
+    expect(token['control'], 3);
+    expect(token['manufacturerCode'], 7);
+    expect(token['description'], 'NMse:control3');
+    expect(token['tokenNo'], '88888888888888888888');
+    expect(token['tokenHex'], '0xCAFEBABE');
+  });
 
   test(
-    'PrismIssuer.issueCurrencyCreditToken scales amount by 100000 '
-    'and forwards subclass',
-    () async {
-      late int observedSubclass;
-      late double observedTransferAmount;
-      final server = await _FakeServer.bind({
-        'signInWithPassword': (call, args) {
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
-          );
-          w.writeFieldBegin(TType.struct, 0);
-          w.writeFieldBegin(TType.string, 1);
-          w.writeString('jwt-currency');
-          w.writeFieldStop();
-          w.writeFieldStop();
-          return w.takeBytes();
-        },
-        'issueCreditToken': (call, args) {
-          observedSubclass = 0;
-          observedTransferAmount = 0;
-          while (true) {
-            final (type, id) = args.readFieldBegin();
-            if (type == TType.stop) break;
-            if (id == 4 && type == TType.i16) {
-              observedSubclass = args.readI16();
-            } else if (id == 5 && type == TType.double_) {
-              observedTransferAmount = args.readDouble();
-            } else {
-              args.skip(type);
-            }
+      'PrismIssuer.issueCurrencyCreditToken scales amount by 100000 '
+      'and forwards subclass', () async {
+    late int observedSubclass;
+    late double observedTransferAmount;
+    final server = await _FakeServer.bind({
+      'signInWithPassword': (call, args) {
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.struct, 0);
+        w.writeFieldBegin(TType.string, 1);
+        w.writeString('jwt-currency');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+      'issueCreditToken': (call, args) {
+        observedSubclass = 0;
+        observedTransferAmount = 0;
+        while (true) {
+          final (type, id) = args.readFieldBegin();
+          if (type == TType.stop) break;
+          if (id == 4 && type == TType.i16) {
+            observedSubclass = args.readI16();
+          } else if (id == 5 && type == TType.double_) {
+            observedTransferAmount = args.readDouble();
+          } else {
+            args.skip(type);
           }
+        }
 
-          final w = BinaryWriter();
-          w.writeMessageBegin(
-            TMessage('issueCreditToken', TMessageType.reply, call.seqId),
-          );
-          w.writeFieldBegin(TType.list, 0);
-          w.writeListBegin(TType.struct, 1);
-          w.writeFieldBegin(TType.i16, 11);
-          w.writeI16(observedSubclass);
-          w.writeFieldBegin(TType.string, 20);
-          w.writeString('Credit:ElectricityCurrency');
-          w.writeFieldBegin(TType.string, 22);
-          w.writeString(observedTransferAmount.toString());
-          w.writeFieldBegin(TType.string, 30);
-          w.writeString('77777777777777777777');
-          w.writeFieldStop();
-          w.writeFieldStop();
-          return w.takeBytes();
-        },
-      });
-      addTearDown(server.close);
+        final w = BinaryWriter();
+        w.writeMessageBegin(
+          TMessage('issueCreditToken', TMessageType.reply, call.seqId),
+        );
+        w.writeFieldBegin(TType.list, 0);
+        w.writeListBegin(TType.struct, 1);
+        w.writeFieldBegin(TType.i16, 11);
+        w.writeI16(observedSubclass);
+        w.writeFieldBegin(TType.string, 20);
+        w.writeString('Credit:ElectricityCurrency');
+        w.writeFieldBegin(TType.string, 22);
+        w.writeString(observedTransferAmount.toString());
+        w.writeFieldBegin(TType.string, 30);
+        w.writeString('77777777777777777777');
+        w.writeFieldStop();
+        w.writeFieldStop();
+        return w.takeBytes();
+      },
+    });
+    addTearDown(server.close);
 
-      final issuer = PrismIssuer.forTesting(
-        const PrismConfig(
-          host: '127.0.0.1',
-          port: 0,
-          realm: 'STS',
-          username: 'vendor',
-          password: 'pw',
-        ),
-        server.socketFactory,
-      );
+    final issuer = PrismIssuer.forTesting(
+      const PrismConfig(
+        host: '127.0.0.1',
+        port: 0,
+        realm: 'STS',
+        username: 'vendor',
+        password: 'pw',
+      ),
+      server.socketFactory,
+    );
 
-      final tokens = await issuer.issueCurrencyCreditToken('req-cur', 4, {
-        VirtualHsmParams.decoderReferenceNumber: '56000000001',
-        VirtualHsmParams.encryptionAlgorithm: 'sta',
-        VirtualHsmParams.supplyGroupCode: '123456',
-        VirtualHsmParams.tariffIndex: '1',
-        VirtualHsmParams.keyRevisionNo: '1',
-        VirtualHsmParams.amount: 25.50,
-      });
+    final tokens = await issuer.issueCurrencyCreditToken('req-cur', 4, {
+      VirtualHsmParams.decoderReferenceNumber: '56000000001',
+      VirtualHsmParams.encryptionAlgorithm: 'sta',
+      VirtualHsmParams.supplyGroupCode: '123456',
+      VirtualHsmParams.tariffIndex: '1',
+      VirtualHsmParams.keyRevisionNo: '1',
+      VirtualHsmParams.amount: 25.50,
+    });
 
-      expect(observedSubclass, 4);
-      expect(observedTransferAmount, 25.50 * 100000);
-      expect(tokens, hasLength(1));
-      expect(tokens.first['subclass'], 4);
-      expect(tokens.first['description'], 'Credit:ElectricityCurrency');
-      expect(tokens.first['tokenNo'], '77777777777777777777');
-      expect(tokens.first['scaledAmount'], (25.50 * 100000).toString());
-    },
-  );
+    expect(observedSubclass, 4);
+    expect(observedTransferAmount, 25.50 * 100000);
+    expect(tokens, hasLength(1));
+    expect(tokens.first['subclass'], 4);
+    expect(tokens.first['description'], 'Credit:ElectricityCurrency');
+    expect(tokens.first['tokenNo'], '77777777777777777777');
+    expect(tokens.first['scaledAmount'], (25.50 * 100000).toString());
+  });
 
   test(
     'PrismIssuer.issueCurrencyCreditToken rejects subclass outside 4..7',
@@ -746,6 +742,81 @@ void main() {
         () => issuer.issueCurrencyCreditToken('req-bad', 0, {}),
         throwsA(isA<NotImplementedException>()),
       );
+    },
+  );
+
+  test(
+    'PrismIssuer.fetchTokenResult forwards originalRequestId and maps the list',
+    () async {
+      late String observedOriginalReqId;
+      final server = await _FakeServer.bind({
+        'signInWithPassword': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('signInWithPassword', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.struct, 0);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('jwt-replay');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+        'fetchTokenResult': (call, args) {
+          observedOriginalReqId = '';
+          while (true) {
+            final (type, id) = args.readFieldBegin();
+            if (type == TType.stop) break;
+            if (id == 3 && type == TType.string) {
+              observedOriginalReqId = args.readString();
+            } else {
+              args.skip(type);
+            }
+          }
+
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('fetchTokenResult', TMessageType.reply, call.seqId),
+          );
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 1);
+          w.writeFieldBegin(TType.i16, 11);
+          w.writeI16(0);
+          w.writeFieldBegin(TType.string, 20);
+          w.writeString('Credit:Electricity');
+          w.writeFieldBegin(TType.string, 22);
+          w.writeString('75.0');
+          w.writeFieldBegin(TType.string, 30);
+          w.writeString('66666666666666666666');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 0,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+        ),
+        server.socketFactory,
+      );
+
+      final tokens = await issuer.fetchTokenResult(
+        'req-replay',
+        'req-original-abc',
+      );
+
+      expect(observedOriginalReqId, 'req-original-abc');
+      expect(tokens, hasLength(1));
+      expect(tokens.first['tokenNo'], '66666666666666666666');
+      expect(tokens.first['subclass'], 0);
+      expect(tokens.first['description'], 'Credit:Electricity');
+      expect(tokens.first['scaledAmount'], '75.0');
     },
   );
 }

@@ -40,6 +40,14 @@
 ///                                    Returns a token list with
 ///                                    `{tokenNo, subclass, description,
 ///                                     scaledAmount}` per entry.
+///   GET  /v1/tokens/results/{originalRequestId}
+///                                  — idempotency replay. Re-fetch the
+///                                    tokens previously issued for an earlier
+///                                    request whose reply the caller never
+///                                    got (timeout, dropped connection).
+///                                    Returns the same `{tokenNo, subclass,
+///                                    description, scaledAmount}` shape as
+///                                    the issue endpoints.
 ///   GET  /healthz                  — liveness probe.
 ///   GET  /v1/health/backend        — issuer-backend probe (ping the
 ///                                    Prism HSM / VirtualHsm). 200 when
@@ -145,10 +153,7 @@ Handler buildApiHandler(
       '/v1/tokens/mse/set-flag',
       (Request r) => _mseHandler(r, issuer, _MseOp.setFlag),
     )
-    ..post(
-      '/v1/tokens/meter-test',
-      (Request r) => _meterTestHandler(r, issuer),
-    )
+    ..post('/v1/tokens/meter-test', (Request r) => _meterTestHandler(r, issuer))
     ..post(
       '/v1/tokens/credit/electricity-currency',
       (Request r) => _currencyCreditHandler(r, issuer, 4, 'electricity'),
@@ -164,6 +169,11 @@ Handler buildApiHandler(
     ..post(
       '/v1/tokens/credit/time-currency',
       (Request r) => _currencyCreditHandler(r, issuer, 7, 'time'),
+    )
+    ..get(
+      '/v1/tokens/results/<originalRequestId>',
+      (Request r, String originalRequestId) =>
+          _fetchTokenResultHandler(r, issuer, originalRequestId),
     )
     ..get(
       '/v1/tokens/<tokenNo>',
@@ -462,6 +472,30 @@ Future<Response> _currencyCreditHandler(
       message: 'Currency-credit token issued ($resourceLabel)',
       requestId: requestId,
       data: {'tokens': tokens},
+    ),
+  );
+}
+
+Future<Response> _fetchTokenResultHandler(
+  Request request,
+  TokenIssuer issuer,
+  String originalRequestId,
+) async {
+  final requestId = _newRequestId();
+  if (originalRequestId.isEmpty) {
+    throw const _BadRequest('Path segment "originalRequestId" is required');
+  }
+  final tokens = await issuer.fetchTokenResult(requestId, originalRequestId);
+  return _json(
+    200,
+    _envelope(
+      code: 200,
+      message: 'Token result fetched',
+      requestId: requestId,
+      data: {
+        'original_request_id': originalRequestId,
+        'tokens': tokens,
+      },
     ),
   );
 }
