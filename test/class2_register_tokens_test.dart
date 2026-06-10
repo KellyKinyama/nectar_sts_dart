@@ -355,8 +355,10 @@ void main() {
   group('Class 2 register-payload tokens — input validation', () {
     test('MaximumPowerLimit out-of-range throws InvalidMplException', () {
       expect(() => MaximumPowerLimit(-1), throwsA(isA<InvalidMplException>()));
+      // STS 2-bit-exp + 14-bit-mantissa encoding tops out around 18.2M,
+      // matching the Amount range.
       expect(
-        () => MaximumPowerLimit(0x10000),
+        () => MaximumPowerLimit(MaximumPowerLimit.maxValue + 1),
         throwsA(isA<InvalidMplException>()),
       );
     });

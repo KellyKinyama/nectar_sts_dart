@@ -16,6 +16,7 @@ library;
 
 import '../base/bit_string.dart';
 import '../exceptions/exceptions.dart';
+import '../util/utils.dart';
 
 /// 16-bit "credit register" snapshot carried by `ClearCredit_21`.
 /// Real meters apply this as: "clear all customer credit and write
@@ -90,17 +91,23 @@ class Rate {
 /// units the utility's metering profile defines — STS Edition 1
 /// does not nail this down beyond "16 unsigned bits").
 class MaximumPowerLimit {
+  /// Inclusive upper bound matching STS-spec Amount range (the same
+  /// 2-bit exponent + 14-bit mantissa packing applies).
+  static const int maxValue = 18201624;
+
   final BitString bitString;
 
   MaximumPowerLimit._(this.bitString);
 
   factory MaximumPowerLimit(int value) {
-    if (value < 0 || value > 0xFFFF) {
+    if (value < 0 || value > maxValue) {
       throw InvalidMplException(
-        'Maximum Power Limit must fit in 16 bits (0..65535), got $value',
+        'Maximum Power Limit must be in 0..$maxValue, got $value',
       );
     }
-    return MaximumPowerLimit._(BitString.fromValue(value, 16));
+    final bs = Utils.convertToBitString(value.toDouble());
+    bs.length = 16;
+    return MaximumPowerLimit._(bs);
   }
 
   factory MaximumPowerLimit.fromBitString(BitString bs) {
@@ -123,17 +130,22 @@ class MaximumPowerLimit {
 /// `SetMaximumPhasePowerUnbalanceLimit_26`. Interpreted by the meter
 /// as an unbalance threshold (commonly a percentage).
 class MaximumPhasePowerUnbalanceLimit {
+  /// Inclusive upper bound matching STS-spec Amount range.
+  static const int maxValue = 18201624;
+
   final BitString bitString;
 
   MaximumPhasePowerUnbalanceLimit._(this.bitString);
 
   factory MaximumPhasePowerUnbalanceLimit(int value) {
-    if (value < 0 || value > 0xFFFF) {
+    if (value < 0 || value > maxValue) {
       throw InvalidMppulException(
-        'Maximum Phase Power Unbalance Limit must fit in 16 bits, got $value',
+        'Maximum Phase Power Unbalance Limit must be in 0..$maxValue, got $value',
       );
     }
-    return MaximumPhasePowerUnbalanceLimit._(BitString.fromValue(value, 16));
+    final bs = Utils.convertToBitString(value.toDouble());
+    bs.length = 16;
+    return MaximumPhasePowerUnbalanceLimit._(bs);
   }
 
   factory MaximumPhasePowerUnbalanceLimit.fromBitString(BitString bs) {
