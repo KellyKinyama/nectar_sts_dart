@@ -36,11 +36,16 @@
 ///                         above. See `Database` for the full env
 ///                         list (HOST / PORT / DATABASE / USERNAME
 ///                         / PASSWORD / POOL_SIZE).
+///   LOG_HTTP_REQUESTS   — `stdout` (default) emits one JSON line per
+///                         HTTP request to stdout. `stderr` emits to
+///                         stderr. `off` / `false` / `0` / `none`
+///                         disables per-request logging.
 ///
 /// Example:
 ///   PORT=2000 VENDING_KEY_HEX=0123456789ABCDEF dart run bin/server.dart
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:nectar_sts_dart/nectar_sts_dart.dart';
@@ -65,8 +70,8 @@ Future<void> main(List<String> args) async {
   final keyHex = (env['VENDING_KEY_HEX'] ?? _defaultVendingKeyHex).trim();
   final bearer = env['NECTAR_API_TOKEN'];
   final logPath = (env['VENDING_LOG_FILE'] ?? _defaultLogPath).trim();
-  final registryPath = (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath)
-      .trim();
+  final registryPath =
+      (env['METER_REGISTRY_FILE'] ?? _defaultRegistryPath).trim();
 
   if (keyHex == _defaultVendingKeyHex) {
     stderr.writeln(
@@ -167,6 +172,7 @@ Future<void> main(List<String> args) async {
     log: log,
     registry: registry,
     tariffs: tariffs.isEmpty ? null : tariffs,
+    logSink: _resolveLogSink(env),
   );
 
   final server = await shelf_io.serve(handler, host, port);
@@ -247,12 +253,34 @@ TokenIssuer _buildIssuer(Map<String, String> env, VirtualHsm fallback) {
           password: password,
           insecureTls:
               (env['PRISM_INSECURE_TLS'] ?? 'true').trim().toLowerCase() !=
-              'false',
+                  'false',
         ),
       );
     default:
       throw StateError(
         'Unknown HSM_KIND="$kind" — expected "virtual" or "prism".',
       );
+  }
+}
+
+/// Pick the HTTP-request log sink based on `LOG_HTTP_REQUESTS`:
+///
+///   stdout (default)  — one JSON line per request to stdout
+///   stderr            — one JSON line per request to stderr
+///   off / false / 0   — disabled (no-op sink, current pre-flag behavior)
+LogSink? _resolveLogSink(Map<String, String> env) {
+  final mode = (env['LOG_HTTP_REQUESTS'] ?? 'stdout').trim().toLowerCase();
+  switch (mode) {
+    case '':
+    case 'off':
+    case 'false':
+    case '0':
+    case 'none':
+      return null;
+    case 'stderr':
+      return (entry) => stderr.writeln(jsonEncode(entry));
+    case 'stdout':
+    default:
+      return (entry) => stdout.writeln(jsonEncode(entry));
   }
 }

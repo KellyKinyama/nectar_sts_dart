@@ -133,18 +133,17 @@ Map<String, dynamic> _envelope({
   required String message,
   required String requestId,
   Object? data,
-}) =>
-    {
-      'status': {'code': code, 'message': message},
-      'request_id': requestId,
-      if (data != null) 'data': data,
-    };
+}) => {
+  'status': {'code': code, 'message': message},
+  'request_id': requestId,
+  if (data != null) 'data': data,
+};
 
 Response _json(int status, Map<String, dynamic> body) => Response(
-      status,
-      body: jsonEncode(body),
-      headers: {'content-type': 'application/json; charset=utf-8'},
-    );
+  status,
+  body: jsonEncode(body),
+  headers: {'content-type': 'application/json; charset=utf-8'},
+);
 
 String _newRequestId() =>
     'req-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
@@ -379,7 +378,8 @@ Future<Response> _generateHandler(
         409,
         _envelope(
           code: 409,
-          message: 'TID collision: a token with tid_minutes=$tid was already '
+          message:
+              'TID collision: a token with tid_minutes=$tid was already '
               'issued for this meter$priorMsg. Use a fresh token_id.',
           requestId: requestId,
         ),
@@ -708,13 +708,13 @@ Future<Response> _lookupHandler(
 // ---- meter registry endpoints ----------------------------------
 
 Response _registryDisabled(String requestId) => _json(
-      503,
-      _envelope(
-        code: 503,
-        message: 'Meter registry is not enabled on this server',
-        requestId: requestId,
-      ),
-    );
+  503,
+  _envelope(
+    code: 503,
+    message: 'Meter registry is not enabled on this server',
+    requestId: requestId,
+  ),
+);
 
 Future<Response> _registerMeterHandler(
   Request request,
@@ -752,10 +752,10 @@ Future<Response> _registerMeterHandler(
   final MeterIdentity identity;
   try {
     identity = MeterIdentity.fromJson({
-      'issuer_identification_no':
-          identityJson['issuer_identification_no']?.toString(),
-      'decoder_reference_number':
-          identityJson['decoder_reference_number']?.toString(),
+      'issuer_identification_no': identityJson['issuer_identification_no']
+          ?.toString(),
+      'decoder_reference_number': identityJson['decoder_reference_number']
+          ?.toString(),
       'key_type': identityJson['key_type'],
       'supply_group_code': identityJson['supply_group_code']?.toString(),
       'tariff_index': identityJson['tariff_index']?.toString(),
@@ -772,8 +772,9 @@ Future<Response> _registerMeterHandler(
   final meter = RegisteredMeter(
     serial: serial,
     identity: identity,
-    encryptionAlgorithm:
-        (body['encryption_algorithm'] ?? 'sta').toString().toLowerCase(),
+    encryptionAlgorithm: (body['encryption_algorithm'] ?? 'sta')
+        .toString()
+        .toLowerCase(),
     subscriberLabel: body['subscriber_label']?.toString(),
     registeredAt: DateTime.now().toUtc(),
   );
@@ -793,7 +794,8 @@ Future<Response> _registerMeterHandler(
       412,
       _envelope(
         code: 412,
-        message: 'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
+        message:
+            'Missing prerequisite row (${e.table}.${e.key}=${e.value}). '
             'Create it in the Laravel dashboard before registering this '
             'meter.',
         requestId: requestId,
@@ -1192,8 +1194,8 @@ Map<String, dynamic> _tokenToJson(Token token) {
     }
     if (token.tokenIdentifier != null) {
       base['token_id_minutes'] = token.tokenIdentifier!.bitString.value;
-      base['token_id_time'] =
-          token.tokenIdentifier!.timeOfIssue.toIso8601String();
+      base['token_id_time'] = token.tokenIdentifier!.timeOfIssue
+          .toIso8601String();
     }
     if (token.randomNo != null) {
       base['random_no'] = token.randomNo!.bitString.value;
@@ -1226,7 +1228,8 @@ Middleware _requestLoggingMiddleware(LogSink sink) {
           400,
           _envelope(
             code: 400,
-            message: 'X-Request-Id "$fromHeader" must match '
+            message:
+                'X-Request-Id "$fromHeader" must match '
                 '${_requestIdPattern.pattern}',
             requestId: genId,
           ),
@@ -1337,11 +1340,7 @@ Middleware _errorHandlingMiddleware() {
       } catch (e) {
         return _json(
           500,
-          _envelope(
-            code: 500,
-            message: 'Internal error: $e',
-            requestId: rid(),
-          ),
+          _envelope(code: 500, message: 'Internal error: $e', requestId: rid()),
         );
       }
     };
