@@ -7,8 +7,14 @@ import '../token/token.dart';
 
 /// Decoder for Class 1 tokens (InitiateMeterTestOrDisplay 1 & 2).
 ///
-/// Dispatches on the embedded sub-class bits (60..63 of the decrypted
-/// data block) to choose between the 8/36-bit and 16/28-bit layouts.
+/// Per IEC 62055-41 §8.4 (and the Java upstream's [Meter.decodeNative]),
+/// Class 1 tokens are transmitted in the clear — the 66-bit transposed
+/// payload IS the data block. We therefore skip the EA decrypt step
+/// and dispatch directly on the embedded sub-class bits (60..63) to
+/// choose between the 8/36-bit and 16/28-bit layouts.
+///
+/// The [DecoderKey] / [EncryptionAlgorithm] parameters are accepted
+/// for API symmetry with the Class 0/2 decoders but are unused.
 class Class1TokenDecoder {
   final DecoderKey decoderKey;
   final EncryptionAlgorithm encryptionAlgorithm;
@@ -25,23 +31,21 @@ class Class1TokenDecoder {
     if (r.tokenClass.bitString.value != 1) {
       throw const TokenError('Token class is not 1 — not a Class 1 token');
     }
-    final decrypted = encryptionAlgorithm.decrypt(decoderKey, r.encrypted64);
-    final decrypted64 = BitString.fromValue(decrypted.value, 64);
-    final encrypted64 = BitString.fromValue(r.encrypted64.value, 64);
+    final dataBlock = BitString.fromValue(r.encrypted64.value, 64);
 
-    final subClassValue = decrypted64.extractBits(60, 4).value;
+    final subClassValue = dataBlock.extractBits(60, 4).value;
     switch (subClassValue) {
       case 0:
         return InitiateMeterTestOrDisplay1Token.decoded(
           requestID,
-          decrypted64,
-          encrypted64,
+          dataBlock,
+          dataBlock,
         );
       case 1:
         return InitiateMeterTestOrDisplay2Token.decoded(
           requestID,
-          decrypted64,
-          encrypted64,
+          dataBlock,
+          dataBlock,
         );
       default:
         throw TokenError('Unknown Class 1 sub-class: $subClassValue');
