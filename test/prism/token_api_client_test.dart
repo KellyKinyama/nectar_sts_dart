@@ -266,33 +266,136 @@ void main() {
       );
     });
 
-    test('verifyToken returns Valid + decoded PrismToken on happy path',
-        () async {
+    test(
+      'verifyToken returns Valid + decoded PrismToken on happy path',
+      () async {
+        final server = await _FakeThriftServer.bind({
+          'verifyToken': (call, args) {
+            final w = BinaryWriter();
+            w.writeMessageBegin(
+              TMessage('verifyToken', TMessageType.reply, call.seqId),
+            );
+            // Result struct: field 0 = success = VerifyResult struct.
+            w.writeFieldBegin(TType.struct, 0);
+            // VerifyResult { validationResult(1), token(2 STRUCT) }
+            w.writeFieldBegin(TType.string, 1);
+            w.writeString('Valid');
+            w.writeFieldBegin(TType.struct, 2);
+            // Inline PrismToken — only the fields the issuer reads back.
+            w.writeFieldBegin(TType.string, 1); // drn
+            w.writeString('56000000001');
+            w.writeFieldBegin(TType.i32, 12); // tid
+            w.writeI32(424242);
+            w.writeFieldBegin(TType.string, 20); // description
+            w.writeString('Credit:Electricity');
+            w.writeFieldBegin(TType.string, 22); // scaledAmount
+            w.writeString('1.5');
+            w.writeFieldBegin(TType.string, 30); // tokenDec
+            w.writeString('98765432109876543210');
+            w.writeFieldStop(); // end PrismToken
+            w.writeFieldStop(); // end VerifyResult
+            w.writeFieldStop(); // end result struct
+            return w.takeBytes();
+          },
+        });
+        addTearDown(server.close);
+
+        final client = await TokenApiClient.connect(server.socketFactory);
+        addTearDown(client.close);
+
+        final res = await client.verifyToken(
+          messageId: 'r',
+          accessToken: 'jwt',
+          meterConfig: const MeterConfigIn(
+            drn: '56000000001',
+            ea: 7,
+            tct: 1,
+            sgc: 123456,
+            krn: 1,
+            ti: 1,
+            ken: 0,
+          ),
+          tokenDec: '98765432109876543210',
+        );
+
+        expect(res.isValid, isTrue);
+        expect(res.validationResult, 'Valid');
+        expect(res.token, isNotNull);
+        expect(res.token!.tid, 424242);
+        expect(res.token!.scaledAmount, '1.5');
+        expect(res.token!.tokenDec, '98765432109876543210');
+      },
+    );
+
+    test(
+      'verifyToken with non-Valid result still returns the struct',
+      () async {
+        final server = await _FakeThriftServer.bind({
+          'verifyToken': (call, args) {
+            final w = BinaryWriter();
+            w.writeMessageBegin(
+              TMessage('verifyToken', TMessageType.reply, call.seqId),
+            );
+            w.writeFieldBegin(TType.struct, 0);
+            w.writeFieldBegin(TType.string, 1);
+            w.writeString('Invalid');
+            w.writeFieldStop(); // end VerifyResult (no token field)
+            w.writeFieldStop(); // end result struct
+            return w.takeBytes();
+          },
+        });
+        addTearDown(server.close);
+
+        final client = await TokenApiClient.connect(server.socketFactory);
+        addTearDown(client.close);
+
+        final res = await client.verifyToken(
+          messageId: 'r',
+          accessToken: 'jwt',
+          meterConfig: const MeterConfigIn(
+            drn: '56000000001',
+            ea: 7,
+            tct: 1,
+            sgc: 123456,
+            krn: 1,
+            ti: 1,
+            ken: 0,
+          ),
+          tokenDec: '00000000000000000000',
+        );
+
+        expect(res.isValid, isFalse);
+        expect(res.validationResult, 'Invalid');
+        expect(res.token, isNull);
+      },
+    );
+
+    test('issueKeyChangeTokens decodes a 2-element list (STA/DEA)', () async {
       final server = await _FakeThriftServer.bind({
-        'verifyToken': (call, args) {
+        'issueKeyChangeTokens': (call, args) {
           final w = BinaryWriter();
           w.writeMessageBegin(
-            TMessage('verifyToken', TMessageType.reply, call.seqId),
+            TMessage('issueKeyChangeTokens', TMessageType.reply, call.seqId),
           );
-          // Result struct: field 0 = success = VerifyResult struct.
-          w.writeFieldBegin(TType.struct, 0);
-          // VerifyResult { validationResult(1), token(2 STRUCT) }
-          w.writeFieldBegin(TType.string, 1);
-          w.writeString('Valid');
-          w.writeFieldBegin(TType.struct, 2);
-          // Inline PrismToken — only the fields the issuer reads back.
-          w.writeFieldBegin(TType.string, 1); // drn
-          w.writeString('56000000001');
-          w.writeFieldBegin(TType.i32, 12); // tid
-          w.writeI32(424242);
+          // Result struct: success = list<PrismToken>.
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 2);
+          // 1st-section KCT (subclass 0x3 = 3).
+          w.writeFieldBegin(TType.i16, 11); // subclass
+          w.writeI16(3);
           w.writeFieldBegin(TType.string, 20); // description
-          w.writeString('Credit:Electricity');
-          w.writeFieldBegin(TType.string, 22); // scaledAmount
-          w.writeString('1.5');
+          w.writeString('KeyChange:1stSection');
           w.writeFieldBegin(TType.string, 30); // tokenDec
-          w.writeString('98765432109876543210');
-          w.writeFieldStop(); // end PrismToken
-          w.writeFieldStop(); // end VerifyResult
+          w.writeString('11111111111111111111');
+          w.writeFieldStop();
+          // 2nd-section KCT (subclass 0x4 = 4).
+          w.writeFieldBegin(TType.i16, 11);
+          w.writeI16(4);
+          w.writeFieldBegin(TType.string, 20);
+          w.writeString('KeyChange:2ndSection');
+          w.writeFieldBegin(TType.string, 30);
+          w.writeString('22222222222222222222');
+          w.writeFieldStop();
           w.writeFieldStop(); // end result struct
           return w.takeBytes();
         },
@@ -302,7 +405,7 @@ void main() {
       final client = await TokenApiClient.connect(server.socketFactory);
       addTearDown(client.close);
 
-      final res = await client.verifyToken(
+      final tokens = await client.issueKeyChangeTokens(
         messageId: 'r',
         accessToken: 'jwt',
         meterConfig: const MeterConfigIn(
@@ -314,30 +417,39 @@ void main() {
           ti: 1,
           ken: 0,
         ),
-        tokenDec: '98765432109876543210',
+        newConfig: const MeterConfigAmendment(
+          toSgc: 234567,
+          toKrn: 2,
+          toTi: 1,
+        ),
       );
 
-      expect(res.isValid, isTrue);
-      expect(res.validationResult, 'Valid');
-      expect(res.token, isNotNull);
-      expect(res.token!.tid, 424242);
-      expect(res.token!.scaledAmount, '1.5');
-      expect(res.token!.tokenDec, '98765432109876543210');
+      expect(tokens, hasLength(2));
+      expect(tokens[0].subclass, 3);
+      expect(tokens[0].description, 'KeyChange:1stSection');
+      expect(tokens[0].tokenDec, '11111111111111111111');
+      expect(tokens[1].subclass, 4);
+      expect(tokens[1].description, 'KeyChange:2ndSection');
+      expect(tokens[1].tokenDec, '22222222222222222222');
     });
 
-    test('verifyToken with non-Valid result still returns the struct',
-        () async {
+    test('issueKeyChangeTokens decodes a 4-element list (MISTY1)', () async {
       final server = await _FakeThriftServer.bind({
-        'verifyToken': (call, args) {
+        'issueKeyChangeTokens': (call, args) {
           final w = BinaryWriter();
           w.writeMessageBegin(
-            TMessage('verifyToken', TMessageType.reply, call.seqId),
+            TMessage('issueKeyChangeTokens', TMessageType.reply, call.seqId),
           );
-          w.writeFieldBegin(TType.struct, 0);
-          w.writeFieldBegin(TType.string, 1);
-          w.writeString('Invalid');
-          w.writeFieldStop(); // end VerifyResult (no token field)
-          w.writeFieldStop(); // end result struct
+          w.writeFieldBegin(TType.list, 0);
+          w.writeListBegin(TType.struct, 4);
+          for (final sc in const [3, 4, 8, 9]) {
+            w.writeFieldBegin(TType.i16, 11);
+            w.writeI16(sc);
+            w.writeFieldBegin(TType.string, 30);
+            w.writeString('${sc}0000000000000000000'.padRight(20, '0'));
+            w.writeFieldStop();
+          }
+          w.writeFieldStop();
           return w.takeBytes();
         },
       });
@@ -346,24 +458,72 @@ void main() {
       final client = await TokenApiClient.connect(server.socketFactory);
       addTearDown(client.close);
 
-      final res = await client.verifyToken(
+      final tokens = await client.issueKeyChangeTokens(
         messageId: 'r',
         accessToken: 'jwt',
         meterConfig: const MeterConfigIn(
           drn: '56000000001',
-          ea: 7,
+          ea: 11, // MISTY1
           tct: 1,
           sgc: 123456,
           krn: 1,
           ti: 1,
           ken: 0,
         ),
-        tokenDec: '00000000000000000000',
+        newConfig: const MeterConfigAmendment(
+          toSgc: 234567,
+          toKrn: 2,
+          toTi: 1,
+        ),
       );
 
-      expect(res.isValid, isFalse);
-      expect(res.validationResult, 'Invalid');
-      expect(res.token, isNull);
+      expect(tokens.map((t) => t.subclass).toList(), [3, 4, 8, 9]);
+    });
+
+    test('issueKeyChangeTokens surfaces ApiException', () async {
+      final server = await _FakeThriftServer.bind({
+        'issueKeyChangeTokens': (call, args) {
+          final w = BinaryWriter();
+          w.writeMessageBegin(
+            TMessage('issueKeyChangeTokens', TMessageType.reply, call.seqId),
+          );
+          // Result struct: ApiException at field 1.
+          w.writeFieldBegin(TType.struct, 1);
+          w.writeFieldBegin(TType.string, 1);
+          w.writeString('NO_KCT');
+          w.writeFieldBegin(TType.string, 2);
+          w.writeString('Cannot issue KCTs for this meter');
+          w.writeFieldStop();
+          w.writeFieldStop();
+          return w.takeBytes();
+        },
+      });
+      addTearDown(server.close);
+
+      final client = await TokenApiClient.connect(server.socketFactory);
+      addTearDown(client.close);
+
+      await expectLater(
+        client.issueKeyChangeTokens(
+          messageId: 'r',
+          accessToken: 'jwt',
+          meterConfig: const MeterConfigIn(
+            drn: '56000000001',
+            ea: 7,
+            tct: 1,
+            sgc: 123456,
+            krn: 1,
+            ti: 1,
+            ken: 0,
+          ),
+          newConfig: const MeterConfigAmendment(
+            toSgc: 234567,
+            toKrn: 2,
+            toTi: 1,
+          ),
+        ),
+        throwsA(isA<PrismApiException>()),
+      );
     });
   });
 }

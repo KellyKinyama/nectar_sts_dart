@@ -61,8 +61,7 @@ class _FakeServer {
 }
 
 void main() {
-  test(
-      'PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
+  test('PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
       'TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -135,8 +134,7 @@ void main() {
     expect(t.tokenIdentifier!.bitString.value, 12345);
   });
 
-  test(
-      'PrismIssuer.generateToken throws NotImplementedException for '
+  test('PrismIssuer.generateToken throws NotImplementedException for '
       'non-electricity classes', () async {
     final issuer = PrismIssuer.forTesting(
       const PrismConfig(
@@ -159,8 +157,7 @@ void main() {
     );
   });
 
-  test(
-      'PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
+  test('PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
       'a TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -215,19 +212,16 @@ void main() {
       server.socketFactory,
     );
 
-    final decoded = await issuer.decodeToken(
-      'req-decode-1',
-      '11122233344455566677',
-      {
-        VirtualHsmParams.tokenClass: '0',
-        VirtualHsmParams.tokenSubclass: '0',
-        VirtualHsmParams.decoderReferenceNumber: '56000000001',
-        VirtualHsmParams.supplyGroupCode: '123456',
-        VirtualHsmParams.tariffIndex: '1',
-        VirtualHsmParams.keyRevisionNo: '1',
-        VirtualHsmParams.encryptionAlgorithm: 'sta',
-      },
-    );
+    final decoded = await issuer
+        .decodeToken('req-decode-1', '11122233344455566677', {
+          VirtualHsmParams.tokenClass: '0',
+          VirtualHsmParams.tokenSubclass: '0',
+          VirtualHsmParams.decoderReferenceNumber: '56000000001',
+          VirtualHsmParams.supplyGroupCode: '123456',
+          VirtualHsmParams.tariffIndex: '1',
+          VirtualHsmParams.keyRevisionNo: '1',
+          VirtualHsmParams.encryptionAlgorithm: 'sta',
+        });
 
     expect(decoded, isA<TransferElectricityCreditToken>());
     final t = decoded as TransferElectricityCreditToken;

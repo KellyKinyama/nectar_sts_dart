@@ -6,12 +6,17 @@
 ///     → returns `accessToken`
 ///   - `issueCreditToken(messageId, accessToken, meterConfig, subclass,
 ///     transferAmount, tokenTime, flags)` → returns `List<PrismToken>`
+///   - `issueKeyChangeTokens(messageId, accessToken, meterConfig,
+///     newConfig)` → returns `List<PrismToken>` (2 entries for STA/DEA,
+///     4 for MISTY1; must be applied as a coordinated set)
+///   - `verifyToken(messageId, accessToken, meterConfig, tokenDec)` →
+///     returns `VerifyResult`
 ///
 /// Struct field IDs + types are taken verbatim from the Java
 /// Thrift-generated reference (`TokenApi.java`, `SessionOptions.java`,
-/// `SignInResult.java`, `MeterConfigIn.java`, `Token.java`,
-/// `ApiException.java`). See the package doc on
-/// `thrift_binary_protocol.dart` for the location.
+/// `SignInResult.java`, `MeterConfigIn.java`, `MeterConfigAmendment.java`,
+/// `Token.java`, `VerifyResult.java`, `ApiException.java`). See the
+/// package doc on `thrift_binary_protocol.dart` for the location.
 library;
 
 import 'dart:async';
@@ -138,6 +143,31 @@ class MeterConfigIn {
     w.writeBool(allow3Kct);
     w.writeFieldBegin(TType.bool_, 33);
     w.writeBool(allowKenUpdate);
+    w.writeFieldStop();
+  }
+}
+
+/// `MeterConfigAmendment` — destination config for
+/// `issueKeyChangeTokens`. Only the three fields the Java IDL
+/// declares: SGC, KRN, TI.
+class MeterConfigAmendment {
+  final int toSgc; // (1) I32
+  final int toKrn; // (2) I16
+  final int toTi; // (3) I16
+
+  const MeterConfigAmendment({
+    required this.toSgc,
+    required this.toKrn,
+    required this.toTi,
+  });
+
+  void writeTo(BinaryWriter w) {
+    w.writeFieldBegin(TType.i32, 1);
+    w.writeI32(toSgc);
+    w.writeFieldBegin(TType.i16, 2);
+    w.writeI16(toKrn);
+    w.writeFieldBegin(TType.i16, 3);
+    w.writeI16(toTi);
     w.writeFieldStop();
   }
 }
@@ -471,6 +501,71 @@ class TokenApiClient {
       throw const TApplicationException(
         TApplicationException.missingResult,
         'issueCreditToken: success field missing',
+      );
+    }
+    return success;
+  }
+
+  // -- issueKeyChangeTokens -----------------------------------------
+
+  /// Issue the full set of Key Change Tokens (KCTs) for migrating a
+  /// meter to a new SGC / KRN / TI.
+  ///
+  /// Returns a list of [PrismToken] — for STA/DEA this is two tokens
+  /// (1st + 2nd section), for MISTY1 it's four (1st…4th section). All
+  /// must be applied as a coordinated set; do not split them across
+  /// independent vending sessions.
+  Future<List<PrismToken>> issueKeyChangeTokens({
+    required String messageId,
+    required String accessToken,
+    required MeterConfigIn meterConfig,
+    required MeterConfigAmendment newConfig,
+  }) async {
+    final w = BinaryWriter();
+    final seq = ++_seq;
+    w.writeMessageBegin(
+      TMessage('issueKeyChangeTokens', TMessageType.call, seq),
+    );
+    // args: messageId(1) accessToken(2) meterConfig(3) newConfig(4)
+    w.writeFieldBegin(TType.string, 1);
+    w.writeString(messageId);
+    w.writeFieldBegin(TType.string, 2);
+    w.writeString(accessToken);
+    w.writeFieldBegin(TType.struct, 3);
+    meterConfig.writeTo(w);
+    w.writeFieldBegin(TType.struct, 4);
+    newConfig.writeTo(w);
+    w.writeFieldStop();
+    await _t.writeFrame(w.takeBytes());
+
+    final r = await _readReplyStruct('issueKeyChangeTokens', seq);
+    List<PrismToken>? success;
+    PrismApiException? ex;
+    while (true) {
+      final (type, id) = r.readFieldBegin();
+      if (type == TType.stop) break;
+      if (id == 0 && type == TType.list) {
+        final (elemType, n) = r.readListBegin();
+        if (elemType != TType.struct) {
+          throw TProtocolException(
+            'issueKeyChangeTokens: expected list<struct>, got elem type '
+            '$elemType',
+          );
+        }
+        success = <PrismToken>[
+          for (var i = 0; i < n; i++) PrismToken.readFrom(r),
+        ];
+      } else if (id == 1 && type == TType.struct) {
+        ex = PrismApiException.readFrom(r);
+      } else {
+        r.skip(type);
+      }
+    }
+    if (ex != null) throw ex;
+    if (success == null) {
+      throw const TApplicationException(
+        TApplicationException.missingResult,
+        'issueKeyChangeTokens: success field missing',
       );
     }
     return success;

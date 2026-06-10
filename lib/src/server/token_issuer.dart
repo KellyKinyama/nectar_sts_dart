@@ -71,8 +71,7 @@ class VirtualHsmIssuer implements TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) =>
-      hsm.decodeToken(requestId, tokenNo, params);
+  ) => hsm.decodeToken(requestId, tokenNo, params);
 }
 
 /// Connection parameters for a remote Prism HSM. Mirrors the
@@ -123,7 +122,7 @@ class PrismIssuer implements TokenIssuer {
   /// Test-only ctor: inject an in-process plain-TCP factory so the
   /// fake Thrift server in `test/prism/` doesn't need certificates.
   PrismIssuer.forTesting(this.config, SocketFactory socketFactory)
-      : _socketFactoryOverride = socketFactory;
+    : _socketFactoryOverride = socketFactory;
 
   @override
   String get name => 'PrismIssuer(${config.host}:${config.port})';
@@ -251,7 +250,8 @@ class PrismIssuer implements TokenIssuer {
       _requiredString(params, VirtualHsmParams.keyRevisionNo),
     );
     final ti = int.parse(_requiredString(params, VirtualHsmParams.tariffIndex));
-    final ken = int.tryParse(
+    final ken =
+        int.tryParse(
           (params[VirtualHsmParams.keyExpiryNumberHighOrder] ?? '0').toString(),
         ) ??
         0;
