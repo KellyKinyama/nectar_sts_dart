@@ -64,8 +64,7 @@ class _FakeServer {
 }
 
 void main() {
-  test(
-      'PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
+  test('PrismIssuer.generateToken (class 0/0) maps a Prism reply into a '
       'TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -138,8 +137,7 @@ void main() {
     expect(t.tokenIdentifier!.bitString.value, 12345);
   });
 
-  test(
-      'PrismIssuer.generateToken throws NotImplementedException for '
+  test('PrismIssuer.generateToken throws NotImplementedException for '
       'non-electricity classes', () async {
     final issuer = PrismIssuer.forTesting(
       const PrismConfig(
@@ -162,8 +160,7 @@ void main() {
     );
   });
 
-  test(
-      'PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
+  test('PrismIssuer.decodeToken (class 0/0) maps a Valid VerifyResult into '
       'a TransferElectricityCreditToken', () async {
     final server = await _FakeServer.bind({
       'signInWithPassword': (call, args) {
@@ -218,16 +215,16 @@ void main() {
       server.socketFactory,
     );
 
-    final decoded =
-        await issuer.decodeToken('req-decode-1', '11122233344455566677', {
-      VirtualHsmParams.tokenClass: '0',
-      VirtualHsmParams.tokenSubclass: '0',
-      VirtualHsmParams.decoderReferenceNumber: '56000000001',
-      VirtualHsmParams.supplyGroupCode: '123456',
-      VirtualHsmParams.tariffIndex: '1',
-      VirtualHsmParams.keyRevisionNo: '1',
-      VirtualHsmParams.encryptionAlgorithm: 'sta',
-    });
+    final decoded = await issuer
+        .decodeToken('req-decode-1', '11122233344455566677', {
+          VirtualHsmParams.tokenClass: '0',
+          VirtualHsmParams.tokenSubclass: '0',
+          VirtualHsmParams.decoderReferenceNumber: '56000000001',
+          VirtualHsmParams.supplyGroupCode: '123456',
+          VirtualHsmParams.tariffIndex: '1',
+          VirtualHsmParams.keyRevisionNo: '1',
+          VirtualHsmParams.encryptionAlgorithm: 'sta',
+        });
 
     expect(decoded, isA<TransferElectricityCreditToken>());
     final t = decoded as TransferElectricityCreditToken;
@@ -326,10 +323,10 @@ void main() {
     () async {
       // No fake server bound; connect to a port nothing is listening on.
       Future<Socket> failingFactory() => Socket.connect(
-            InternetAddress.loopbackIPv4,
-            1, // privileged port nothing in CI binds to
-            timeout: const Duration(milliseconds: 200),
-          );
+        InternetAddress.loopbackIPv4,
+        1, // privileged port nothing in CI binds to
+        timeout: const Duration(milliseconds: 200),
+      );
 
       final issuer = PrismIssuer.forTesting(
         const PrismConfig(
@@ -558,8 +555,7 @@ void main() {
     },
   );
 
-  test(
-      'PrismIssuer.issueMeterTestToken forwards subclass/control/mfrcode '
+  test('PrismIssuer.issueMeterTestToken forwards subclass/control/mfrcode '
       'and maps the reply struct', () async {
     late int observedSubclass;
     late int observedControl;
@@ -644,8 +640,7 @@ void main() {
     expect(token['tokenHex'], '0xCAFEBABE');
   });
 
-  test(
-      'PrismIssuer.issueCurrencyCreditToken scales amount by 100000 '
+  test('PrismIssuer.issueCurrencyCreditToken scales amount by 100000 '
       'and forwards subclass', () async {
     late int observedSubclass;
     late double observedTransferAmount;
@@ -822,8 +817,7 @@ void main() {
     },
   );
 
-  test(
-      'PrismIssuer.verifyToken returns raw {validationResult,isValid,token} '
+  test('PrismIssuer.verifyToken returns raw {validationResult,isValid,token} '
       'and does NOT throw on non-Valid results', () async {
     late String observedTokenDec;
     final server = await _FakeServer.bind({
@@ -886,14 +880,14 @@ void main() {
       server.socketFactory,
     );
 
-    final result =
-        await issuer.verifyToken('req-verify', '99988877766655544433', {
-      VirtualHsmParams.decoderReferenceNumber: '56000000001',
-      VirtualHsmParams.supplyGroupCode: '123456',
-      VirtualHsmParams.tariffIndex: '1',
-      VirtualHsmParams.keyRevisionNo: '1',
-      VirtualHsmParams.encryptionAlgorithm: 'sta',
-    });
+    final result = await issuer
+        .verifyToken('req-verify', '99988877766655544433', {
+          VirtualHsmParams.decoderReferenceNumber: '56000000001',
+          VirtualHsmParams.supplyGroupCode: '123456',
+          VirtualHsmParams.tariffIndex: '1',
+          VirtualHsmParams.keyRevisionNo: '1',
+          VirtualHsmParams.encryptionAlgorithm: 'sta',
+        });
 
     expect(observedTokenDec, '99988877766655544433');
     expect(result['validationResult'], 'Expired');
@@ -911,7 +905,7 @@ void main() {
     // is the cheapest RPC to drive end-to-end since it ignores most
     // input fields.
     Future<({_FakeServer server, int Function() signInCount})>
-        bootCached() async {
+    bootCached() async {
       int signIns = 0;
       final server = await _FakeServer.bind({
         'signInWithPassword': (call, args) {
@@ -1056,36 +1050,33 @@ void main() {
       });
     }
 
-    test(
-      'sequential calls reuse a single pooled connection',
-      () async {
-        final server = await _bootPoolServer();
-        addTearDown(server.close);
+    test('sequential calls reuse a single pooled connection', () async {
+      final server = await _bootPoolServer();
+      addTearDown(server.close);
 
-        final issuer = PrismIssuer.forTesting(
-          const PrismConfig(
-            host: '127.0.0.1',
-            port: 0,
-            realm: 'STS',
-            username: 'vendor',
-            password: 'pw',
-            // default maxConnections: 4 - plenty for serial calls
-          ),
-          server.socketFactory,
-        );
-        addTearDown(issuer.close);
+      final issuer = PrismIssuer.forTesting(
+        const PrismConfig(
+          host: '127.0.0.1',
+          port: 0,
+          realm: 'STS',
+          username: 'vendor',
+          password: 'pw',
+          // default maxConnections: 4 - plenty for serial calls
+        ),
+        server.socketFactory,
+      );
+      addTearDown(issuer.close);
 
-        await issuer.fetchTokenResult('req-1', 'orig-1');
-        await issuer.fetchTokenResult('req-2', 'orig-2');
-        await issuer.fetchTokenResult('req-3', 'orig-3');
+      await issuer.fetchTokenResult('req-1', 'orig-1');
+      await issuer.fetchTokenResult('req-2', 'orig-2');
+      await issuer.fetchTokenResult('req-3', 'orig-3');
 
-        expect(
-          server.connectionCount,
-          1,
-          reason: 'all 3 calls should share one pooled TCP connection',
-        );
-      },
-    );
+      expect(
+        server.connectionCount,
+        1,
+        reason: 'all 3 calls should share one pooled TCP connection',
+      );
+    });
 
     test('maxConnections == 0 disables the pool (per-call connect)', () async {
       final server = await _bootPoolServer();

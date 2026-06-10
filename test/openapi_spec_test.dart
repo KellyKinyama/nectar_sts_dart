@@ -6,10 +6,10 @@ import 'package:shelf/shelf.dart';
 import 'package:test/test.dart';
 
 TokenIssuer _hsm() => VirtualHsmIssuer(
-      VirtualHsm(
-        VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
-      ),
-    );
+  VirtualHsm(
+    VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+  ),
+);
 
 Future<Map<String, dynamic>> _getJson(Handler handler, String path) async {
   final req = Request('GET', Uri.parse('http://localhost$path'));
@@ -33,22 +33,23 @@ void main() {
       // Spot-check a representative slice of the surface so the test
       // catches accidental removals without enumerating every route.
       expect(
-          paths.keys,
-          containsAll(<String>[
-            '/healthz',
-            '/openapi.json',
-            '/v1/health/backend',
-            '/v1/status/nodes',
-            '/v1/tokens',
-            '/v1/tokens/key-change',
-            '/v1/tokens/mse/clear-credit',
-            '/v1/tokens/credit/electricity-currency',
-            '/v1/tokens/results/{originalRequestId}',
-            '/v1/tokens/{tokenNo}/verify',
-            '/v1/tokens/{tokenNo}',
-            '/v1/meters',
-            '/v1/meters/{serial}',
-          ]));
+        paths.keys,
+        containsAll(<String>[
+          '/healthz',
+          '/openapi.json',
+          '/v1/health/backend',
+          '/v1/status/nodes',
+          '/v1/tokens',
+          '/v1/tokens/key-change',
+          '/v1/tokens/mse/clear-credit',
+          '/v1/tokens/credit/electricity-currency',
+          '/v1/tokens/results/{originalRequestId}',
+          '/v1/tokens/{tokenNo}/verify',
+          '/v1/tokens/{tokenNo}',
+          '/v1/meters',
+          '/v1/meters/{serial}',
+        ]),
+      );
 
       // Every path entry must declare at least one HTTP method that is
       // an object (the operation), not an arbitrary scalar.
@@ -77,10 +78,7 @@ void main() {
       final req = Request('GET', Uri.parse('http://localhost/openapi.json'));
       final resp = await handler(req);
       expect(resp.statusCode, 200);
-      expect(
-        resp.headers['content-type'],
-        contains('application/json'),
-      );
+      expect(resp.headers['content-type'], contains('application/json'));
     });
   });
 }
