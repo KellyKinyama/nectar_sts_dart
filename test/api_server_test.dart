@@ -360,24 +360,21 @@ void main() {
       },
     );
 
-    test(
-      'POST /v1/tokens/meter-test -> 200 single token (Display1)',
-      () async {
-        final handler = buildApiHandler(_hsm());
-        final r = await _post(handler, '/v1/tokens/meter-test', {
-          'subclass': 0,
-          'control': 0x12345,
-          'manufacturer_code': 0xA5,
-        });
-        expect(r['status'], 200);
-        final token = ((r['body'] as Map)['data'] as Map)['token'] as Map;
-        expect((token['tokenNo'] as String), hasLength(20));
-        expect(token['subclass'], 0);
-        expect(token['control'], 0x12345);
-        expect(token['manufacturerCode'], 0xA5);
-        expect(token['description'], isA<String>());
-      },
-    );
+    test('POST /v1/tokens/meter-test -> 200 single token (Display1)', () async {
+      final handler = buildApiHandler(_hsm());
+      final r = await _post(handler, '/v1/tokens/meter-test', {
+        'subclass': 0,
+        'control': 0x12345,
+        'manufacturer_code': 0xA5,
+      });
+      expect(r['status'], 200);
+      final token = ((r['body'] as Map)['data'] as Map)['token'] as Map;
+      expect((token['tokenNo'] as String), hasLength(20));
+      expect(token['subclass'], 0);
+      expect(token['control'], 0x12345);
+      expect(token['manufacturerCode'], 0xA5);
+      expect(token['description'], isA<String>());
+    });
 
     test(
       'POST /v1/tokens/meter-test -> 200 single token (Display2 / 16-bit mfg)',
@@ -426,11 +423,29 @@ void main() {
     });
 
     test(
-      'POST /v1/tokens/credit/*-currency -> 501 NotImplemented for VirtualHsm',
+      'POST /v1/tokens/credit/electricity-currency -> 200 single token',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(
+          handler,
+          '/v1/tokens/credit/electricity-currency',
+          {..._baseParams(), 'amount': 50.0},
+        );
+        expect(r['status'], 200);
+        final tokens = ((r['body'] as Map)['data'] as Map)['tokens'] as List;
+        expect(tokens, hasLength(1));
+        final t = tokens.single as Map;
+        expect((t['tokenNo'] as String), hasLength(20));
+        expect(t['subclass'], 0);
+        expect(t['scaledAmount'], 50.0 * 100000);
+      },
+    );
+
+    test(
+      'POST /v1/tokens/credit/{water,gas,time}-currency -> 501 (out of scope)',
       () async {
         final handler = buildApiHandler(_hsm());
         for (final path in const [
-          '/v1/tokens/credit/electricity-currency',
           '/v1/tokens/credit/water-currency',
           '/v1/tokens/credit/gas-currency',
           '/v1/tokens/credit/time-currency',
@@ -442,7 +457,7 @@ void main() {
           expect(r['status'], 501, reason: '$path expected 501');
           expect(
             ((r['body'] as Map)['status'] as Map)['message'],
-            contains('currency-credit'),
+            contains('currency-credit subclass'),
           );
         }
       },

@@ -433,10 +433,44 @@ class VirtualHsmIssuer implements TokenIssuer {
     String requestId,
     int subclass,
     Map<String, dynamic> params,
-  ) =>
+  ) async {
+    // Only subclass 4 (ElectricityCurrency) maps onto a ported
+    // generator. Water / gas / time currency tokens are out of
+    // scope for the electricity-only MVP.
+    if (subclass != 4) {
       throw NotImplementedException(
-        '$name does not support currency-credit token issuance.',
+        '$name does not support currency-credit subclass $subclass '
+        '(only 4=ElectricityCurrency is wired in-process; water/gas/time '
+        'currency tokens are out of scope for the electricity-only '
+        'deployment).',
       );
+    }
+    // Caller is expected to have already resolved money -> kWh via
+    // the tariff (same contract as the regular /v1/tokens endpoint
+    // when given a server-side tariff). We mint a normal class 0 /
+    // subclass 0 electricity-credit token and report the wire-
+    // format scaled amount the remote issuer would have produced
+    // (x100000 per the currency-credit Prism convention) so callers
+    // get a parity-shaped reply.
+    final sectionParams = <String, dynamic>{
+      ...params,
+      VirtualHsmParams.tokenClass: '0',
+      VirtualHsmParams.tokenSubclass: '0',
+    };
+    final token = hsm.generateToken(requestId, sectionParams);
+    final amountRaw = params[VirtualHsmParams.amount];
+    final amountKwh = amountRaw is num
+        ? amountRaw.toDouble()
+        : double.parse(amountRaw.toString());
+    return [
+      {
+        'tokenNo': token.tokenNo,
+        'subclass': token.tokenSubClass?.bitString.value ?? 0,
+        'description': token.type,
+        'scaledAmount': amountKwh * 100000,
+      },
+    ];
+  }
 
   @override
   Future<List<Map<String, Object?>>> fetchTokenResult(
