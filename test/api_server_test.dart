@@ -60,8 +60,9 @@ class _UnhealthyIssuer implements TokenIssuer {
     String requestId,
     int subclass,
     int control,
-    int manufacturerCode,
-  ) =>
+    int manufacturerCode, {
+    Map<String, dynamic> params = const {},
+  }) =>
       throw UnimplementedError();
 
   @override
@@ -360,18 +361,53 @@ void main() {
     );
 
     test(
-      'POST /v1/tokens/meter-test -> 501 NotImplemented for VirtualHsm',
+      'POST /v1/tokens/meter-test -> 200 single token (Display1)',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/meter-test', {
+          'subclass': 0,
+          'control': 0x12345,
+          'manufacturer_code': 0xA5,
+        });
+        expect(r['status'], 200);
+        final token = ((r['body'] as Map)['data'] as Map)['token'] as Map;
+        expect((token['tokenNo'] as String), hasLength(20));
+        expect(token['subclass'], 0);
+        expect(token['control'], 0x12345);
+        expect(token['manufacturerCode'], 0xA5);
+        expect(token['description'], isA<String>());
+      },
+    );
+
+    test(
+      'POST /v1/tokens/meter-test -> 200 single token (Display2 / 16-bit mfg)',
       () async {
         final handler = buildApiHandler(_hsm());
         final r = await _post(handler, '/v1/tokens/meter-test', {
           'subclass': 1,
-          'control': 3,
+          'control': 0xABCDEF1,
+          'manufacturer_code': 0xBEEF,
+        });
+        expect(r['status'], 200);
+        final token = ((r['body'] as Map)['data'] as Map)['token'] as Map;
+        expect(token['subclass'], 1);
+        expect(token['manufacturerCode'], 0xBEEF);
+      },
+    );
+
+    test(
+      'POST /v1/tokens/meter-test -> 501 for unsupported subclass',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/meter-test', {
+          'subclass': 32,
+          'control': 1,
           'manufacturer_code': 7,
         });
         expect(r['status'], 501);
         expect(
           ((r['body'] as Map)['status'] as Map)['message'],
-          contains('NMSE meter-test'),
+          contains('subclass 32'),
         );
       },
     );

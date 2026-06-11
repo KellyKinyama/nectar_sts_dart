@@ -123,12 +123,18 @@ abstract class TokenIssuer {
   /// Returns one token record
   /// `{tokenNo, subclass, control, manufacturerCode, description,
   /// tokenHex}` — unlike MSE/KCT this is never a bundle.
+  ///
+  /// The optional [params] map lets in-process issuers override the
+  /// default broadcast "engineering" meter config (e.g. to target a
+  /// specific meter via its SGC/KRN/TI). Remote-backed issuers
+  /// ignore it — their HSM holds the engineering key internally.
   FutureOr<Map<String, Object?>> issueMeterTestToken(
     String requestId,
     int subclass,
     int control,
-    int manufacturerCode,
-  ) =>
+    int manufacturerCode, {
+    Map<String, dynamic> params = const {},
+  }) =>
       throw NotImplementedException(
         '$name does not support NMSE meter-test token issuance.',
       );
@@ -378,11 +384,49 @@ class VirtualHsmIssuer implements TokenIssuer {
     String requestId,
     int subclass,
     int control,
-    int manufacturerCode,
-  ) =>
+    int manufacturerCode, {
+    Map<String, dynamic> params = const {},
+  }) async {
+    // Only subclasses 0 (Display1) and 1 (Display2) have an
+    // in-process generator. Surface any other value as a clear
+    // NotImplemented rather than a generic dispatch error.
+    if (subclass != 0 && subclass != 1) {
       throw NotImplementedException(
-        '$name does not support NMSE meter-test token issuance.',
+        '$name does not support NMSE meter-test subclass $subclass '
+        '(only 0=Display1 and 1=Display2 are wired in-process).',
       );
+    }
+    // NMSE tokens are by design broadcast diagnostic signals — the
+    // upstream HSM derives a fixed engineering key from the vending
+    // master and uses it regardless of meter identity. We mirror
+    // that with a deterministic synthetic config; any holder of the
+    // same vending key + this config can decode the token. Caller-
+    // supplied [params] take precedence so a target-specific variant
+    // is still possible.
+    final sectionParams = <String, dynamic>{
+      VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+      VirtualHsmParams.encryptionAlgorithm: 'sta',
+      VirtualHsmParams.keyType: 2,
+      VirtualHsmParams.supplyGroupCode: '000001',
+      VirtualHsmParams.tariffIndex: '01',
+      VirtualHsmParams.keyRevisionNo: 1,
+      VirtualHsmParams.issuerIdentificationNo: '000001',
+      VirtualHsmParams.decoderReferenceNumber: '00000000001',
+      ...params,
+      VirtualHsmParams.tokenClass: '1',
+      VirtualHsmParams.tokenSubclass: subclass.toString(),
+      VirtualHsmParams.control: control,
+      VirtualHsmParams.manufacturerCode: manufacturerCode,
+    };
+    final token = hsm.generateToken(requestId, sectionParams);
+    return {
+      'tokenNo': token.tokenNo,
+      'subclass': token.tokenSubClass?.bitString.value ?? subclass,
+      'control': control,
+      'manufacturerCode': manufacturerCode,
+      'description': token.type,
+    };
+  }
 
   @override
   Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
@@ -840,8 +884,9 @@ class PrismIssuer implements TokenIssuer {
     String requestId,
     int subclass,
     int control,
-    int manufacturerCode,
-  ) async {
+    int manufacturerCode, {
+    Map<String, dynamic> params = const {},
+  }) async {
     return await _withClient((client) async {
       final accessToken = await _getAccessToken(client, requestId);
       final t = await client.issueMeterTestToken(
