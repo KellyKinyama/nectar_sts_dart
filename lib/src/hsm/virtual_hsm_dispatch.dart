@@ -120,7 +120,7 @@ extension VirtualHsmDispatch on VirtualHsm {
   Token generateToken(String requestID, Map<String, dynamic> params) {
     _rejectPrism(params);
 
-    final decoderKey = _deriveDecoderKey(params);
+    final decoderKey = deriveDecoderKeyFromParams(params);
     final ea = _encryptionAlgorithm(params);
     final klass = _required(params, VirtualHsmParams.tokenClass).toString();
     final sub = _required(params, VirtualHsmParams.tokenSubclass).toString();
@@ -210,7 +210,7 @@ extension VirtualHsmDispatch on VirtualHsm {
     Map<String, dynamic> params,
   ) {
     _rejectPrism(params);
-    final decoderKey = _deriveDecoderKey(params);
+    final decoderKey = deriveDecoderKeyFromParams(params);
     final ea = _encryptionAlgorithm(params);
     return TokenDecoderDispatcher(
       decoderKey,
@@ -230,7 +230,14 @@ extension VirtualHsmDispatch on VirtualHsm {
     }
   }
 
-  DecoderKey _deriveDecoderKey(Map<String, dynamic> params) {
+  /// Derive the decoder key referenced by [params] using this HSM's
+  /// vending master key. Reads `decoder_key_generation_algorithm`
+  /// plus the per-DKGA parameter set (IIN, IAIN/DRN, SGC, KRN, TI,
+  /// KT, and for DKGA-04 also EA + base date). Exposed for callers
+  /// that need to pre-compute a target key for embedding in another
+  /// token — notably the KCT bundle issuer, which derives the *new*
+  /// decoder key from a (new_sgc, new_krn, new_ti, new_kt) override.
+  DecoderKey deriveDecoderKeyFromParams(Map<String, dynamic> params) {
     final dkga = _required(
       params,
       VirtualHsmParams.decoderKeyGenerationAlgorithm,
@@ -246,11 +253,11 @@ extension VirtualHsmDispatch on VirtualHsm {
           ),
           individualAccountIdentificationNumber:
               IndividualAccountIdentificationNumber(
-                _required(
-                  params,
-                  VirtualHsmParams.decoderReferenceNumber,
-                ).toString(),
-              ),
+            _required(
+              params,
+              VirtualHsmParams.decoderReferenceNumber,
+            ).toString(),
+          ),
           keyType: KeyType(_intParam(params, VirtualHsmParams.keyType)),
           supplyGroupCode: SupplyGroupCode(
             _required(params, VirtualHsmParams.supplyGroupCode).toString(),
@@ -564,7 +571,7 @@ extension VirtualHsmDispatch on VirtualHsm {
   }
 
   SetMaximumPhasePowerUnbalanceLimitToken
-  _generateClass2SetMaximumPhasePowerUnbalanceLimit(
+      _generateClass2SetMaximumPhasePowerUnbalanceLimit(
     String requestID,
     Map<String, dynamic> params,
     DecoderKey decoderKey,
@@ -671,4 +678,13 @@ Uint8List parseHexKey(String hex) {
     out[i] = int.parse(s.substring(i * 2, i * 2 + 2), radix: 16);
   }
   return out;
+}
+
+/// Inverse of [parseHexKey]: lower-case hex, no separator, no prefix.
+String hexEncodeKey(List<int> bytes) {
+  final buf = StringBuffer();
+  for (final b in bytes) {
+    buf.write((b & 0xFF).toRadixString(16).padLeft(2, '0'));
+  }
+  return buf.toString();
 }

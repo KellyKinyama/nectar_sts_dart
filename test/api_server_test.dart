@@ -7,10 +7,10 @@ import 'package:shelf/shelf.dart';
 import 'package:test/test.dart';
 
 TokenIssuer _hsm() => VirtualHsmIssuer(
-  VirtualHsm(
-    VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
-  ),
-);
+      VirtualHsm(
+        VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+      ),
+    );
 
 class _UnhealthyIssuer implements TokenIssuer {
   @override
@@ -18,10 +18,10 @@ class _UnhealthyIssuer implements TokenIssuer {
 
   @override
   Future<Map<String, Object?>> checkBackend() async => {
-    'ok': false,
-    'backend': name,
-    'error': 'boom: connection refused',
-  };
+        'ok': false,
+        'backend': name,
+        'error': 'boom: connection refused',
+      };
 
   @override
   Future<List<Map<String, Object?>>> getNodeStatus() async =>
@@ -36,13 +36,15 @@ class _UnhealthyIssuer implements TokenIssuer {
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> issueKeyChangeTokens(
     String requestId,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> issueMseToken(
@@ -50,7 +52,8 @@ class _UnhealthyIssuer implements TokenIssuer {
     int subclass,
     double transferAmount,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<Map<String, Object?>> issueMeterTestToken(
@@ -58,48 +61,52 @@ class _UnhealthyIssuer implements TokenIssuer {
     int subclass,
     int control,
     int manufacturerCode,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> issueCurrencyCreditToken(
     String requestId,
     int subclass,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<List<Map<String, Object?>>> fetchTokenResult(
     String requestId,
     String originalRequestId,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<Map<String, Object?>> verifyToken(
     String requestId,
     String tokenNo,
     Map<String, dynamic> params,
-  ) => throw UnimplementedError();
+  ) =>
+      throw UnimplementedError();
 
   @override
   Future<void> close() async {}
 }
 
 Map<String, dynamic> _baseParams() => {
-  'decoder_key_generation_algorithm': '02',
-  'encryption_algorithm': 'sta',
-  'key_type': 2,
-  'supply_group_code': '123456',
-  'tariff_index': '07',
-  'key_revision_no': 1,
-  'issuer_identification_no': '600727',
-  'decoder_reference_number': '12345678901',
-  'class': '0',
-  'subclass': '0',
-  'amount': 25.5,
-  'token_id': '2024-06-01T12:00:00Z',
-  'random_no': 7,
-  'base_date': '1993',
-};
+      'decoder_key_generation_algorithm': '02',
+      'encryption_algorithm': 'sta',
+      'key_type': 2,
+      'supply_group_code': '123456',
+      'tariff_index': '07',
+      'key_revision_no': 1,
+      'issuer_identification_no': '600727',
+      'decoder_reference_number': '12345678901',
+      'class': '0',
+      'subclass': '0',
+      'amount': 25.5,
+      'token_id': '2024-06-01T12:00:00Z',
+      'random_no': 7,
+      'base_date': '1993',
+    };
 
 Future<Map<String, dynamic>> _post(
   Handler handler,
@@ -189,7 +196,7 @@ void main() {
     );
 
     test(
-      'POST /v1/tokens/key-change -> 501 NotImplemented for VirtualHsm',
+      'POST /v1/tokens/key-change -> 200 STA 2-token bundle',
       () async {
         final handler = buildApiHandler(_hsm());
         final r = await _post(handler, '/v1/tokens/key-change', {
@@ -198,11 +205,71 @@ void main() {
           'new_key_revision_number': 2,
           'new_tariff_index': '07',
         });
-        expect(r['status'], 501);
+        expect(r['status'], 200);
         final body = r['body'] as Map<String, dynamic>;
+        expect((body['status'] as Map)['code'], 200);
         expect(
           (body['status'] as Map)['message'],
-          contains('Key Change Token'),
+          'Key change tokens issued',
+        );
+        final tokens = (body['data'] as Map)['tokens'] as List;
+        expect(tokens, hasLength(2));
+        expect(
+          tokens.map((t) => (t as Map)['subclass']).toList(),
+          [3, 4],
+        );
+        for (final t in tokens) {
+          final m = t as Map;
+          expect((m['tokenNo'] as String), hasLength(20));
+          expect(m['description'], isA<String>());
+        }
+      },
+    );
+
+    test(
+      'POST /v1/tokens/key-change -> 200 MISTY1 4-token bundle',
+      () async {
+        // MISTY1 wants a 128-bit decoder key, which requires the
+        // DKGA-04 path and a 160-bit vending key.
+        final misty1Hsm = VirtualHsmIssuer(
+          VirtualHsm(
+            VendingCommonDesKey(
+              parseHexKey('0123456789ABCDEF0123456789ABCDEF01234567'),
+            ),
+          ),
+        );
+        final handler = buildApiHandler(misty1Hsm);
+        final r = await _post(handler, '/v1/tokens/key-change', {
+          ..._baseParams(),
+          'decoder_key_generation_algorithm': '04',
+          'encryption_algorithm': 'misty1',
+          'new_supply_group_code': '234567',
+          'new_key_revision_number': 2,
+          'new_tariff_index': '07',
+        });
+        expect(r['status'], 200);
+        final tokens = ((r['body'] as Map)['data'] as Map)['tokens'] as List;
+        expect(tokens, hasLength(4));
+        expect(
+          tokens.map((t) => (t as Map)['subclass']).toList(),
+          [3, 4, 8, 9],
+        );
+      },
+    );
+
+    test(
+      'POST /v1/tokens/key-change -> 400 when new_supply_group_code missing',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/key-change', {
+          ..._baseParams(),
+          'new_key_revision_number': 2,
+          'new_tariff_index': '07',
+        });
+        expect(r['status'], 400);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          contains('new_supply_group_code'),
         );
       },
     );
@@ -333,9 +400,8 @@ void main() {
 
         final gen = await _post(handler, '/v1/tokens', params);
         expect(gen['status'], 200, reason: 'generate failed: ${gen['body']}');
-        final tokenNo =
-            (((gen['body'] as Map)['data'] as Map)['token'] as List).first
-                as Map;
+        final tokenNo = (((gen['body'] as Map)['data'] as Map)['token'] as List)
+            .first as Map;
         final tn = tokenNo['token_no'] as String;
 
         final r = await _post(handler, '/v1/tokens/$tn/verify', params);
@@ -360,10 +426,8 @@ void main() {
 
         final gen = await _post(handler, '/v1/tokens', params);
         expect(gen['status'], 200);
-        final tn =
-            ((((gen['body'] as Map)['data'] as Map)['token'] as List).first
-                    as Map)['token_no']
-                as String;
+        final tn = ((((gen['body'] as Map)['data'] as Map)['token'] as List)
+            .first as Map)['token_no'] as String;
         // Twiddle a single digit so the CRC fails.
         final tampered = tn.substring(0, 19) + (tn[19] == '0' ? '1' : '0');
 
@@ -515,10 +579,8 @@ void main() {
       final log = VendingLog();
       final handler = buildApiHandler(_hsm(), log: log);
       final gen = await _post(handler, '/v1/tokens', _baseParams());
-      final tokenNo =
-          (((gen['body'] as Map)['data'] as Map)['token'] as List)
-                  .first['token_no']
-              as String;
+      final tokenNo = (((gen['body'] as Map)['data'] as Map)['token'] as List)
+          .first['token_no'] as String;
 
       final hit = await _get(handler, '/v1/tokens/$tokenNo');
       expect(hit['status'], 200);
@@ -581,19 +643,19 @@ void main() {
 
   group('meter registry', () {
     Map<String, dynamic> _registerBody() => {
-      'serial': 'METER-001',
-      'subscriber_label': 'Acme Bakery',
-      'encryption_algorithm': 'sta',
-      'identity': {
-        'issuer_identification_no': '600727',
-        'decoder_reference_number': '12345678901',
-        'key_type': 2,
-        'supply_group_code': '123456',
-        'tariff_index': '07',
-        'key_revision_no': 1,
-        'decoder_key_generation_algorithm': '02',
-      },
-    };
+          'serial': 'METER-001',
+          'subscriber_label': 'Acme Bakery',
+          'encryption_algorithm': 'sta',
+          'identity': {
+            'issuer_identification_no': '600727',
+            'decoder_reference_number': '12345678901',
+            'key_type': 2,
+            'supply_group_code': '123456',
+            'tariff_index': '07',
+            'key_revision_no': 1,
+            'decoder_key_generation_algorithm': '02',
+          },
+        };
 
     test('POST /v1/meters registers and GET /v1/meters lists it', () async {
       final reg = MeterRegistry();
@@ -758,11 +820,12 @@ void main() {
 
   group('tariff / pricing', () {
     TariffBook _book() => TariffBook(
-      byTariffIndex: {
-        '07': const Tariff(currency: 'KES', pricePerKwh: 24.0),
-        '01': const Tariff(currency: 'IDR', pricePerKwh: 1444, adminFee: 2500),
-      },
-    );
+          byTariffIndex: {
+            '07': const Tariff(currency: 'KES', pricePerKwh: 24.0),
+            '01': const Tariff(
+                currency: 'IDR', pricePerKwh: 1444, adminFee: 2500),
+          },
+        );
 
     test(
       'amount_money is converted to kWh and reported in pricing block',
