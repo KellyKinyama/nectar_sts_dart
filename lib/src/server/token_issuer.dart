@@ -311,12 +311,8 @@ class VirtualHsmIssuer implements TokenIssuer {
     ];
     if (isMisty1) {
       tokens
-        ..add(
-          sectionToken('8', {VirtualHsmParams.newSupplyGroupCode: newSgc}),
-        )
-        ..add(
-          sectionToken('9', {VirtualHsmParams.newSupplyGroupCode: newSgc}),
-        );
+        ..add(sectionToken('8', {VirtualHsmParams.newSupplyGroupCode: newSgc}))
+        ..add(sectionToken('9', {VirtualHsmParams.newSupplyGroupCode: newSgc}));
     }
 
     return [
@@ -335,10 +331,47 @@ class VirtualHsmIssuer implements TokenIssuer {
     int subclass,
     double transferAmount,
     Map<String, dynamic> params,
-  ) =>
-      throw NotImplementedException(
-        '$name does not support MSE token issuance.',
-      );
+  ) async {
+    // The HTTP layer pre-resolves [transferAmount] from typed body
+    // fields (`maximum_power_limit`, `tariff_rate`, …) so the
+    // remote Prism RPC can take it as a single scalar. The
+    // in-process generators read the same value back out of the
+    // flat param map; fold the resolved scalar in under whichever
+    // VirtualHsmParams slot the dispatch case expects, but never
+    // overwrite a value the caller already supplied.
+    final sectionParams = <String, dynamic>{
+      ...params,
+      VirtualHsmParams.tokenClass: '2',
+      VirtualHsmParams.tokenSubclass: subclass.toString(),
+    };
+    switch (subclass) {
+      case 0: // SetMaximumPowerLimit
+        sectionParams[VirtualHsmParams.maximumPowerLimit] ??=
+            transferAmount.toInt();
+      case 1: // ClearCredit — no extra payload
+      case 5: // ClearTamperCondition — no extra payload
+        break;
+      case 2: // SetTariffRate
+        sectionParams[VirtualHsmParams.tariffRate] ??= transferAmount.toInt();
+      case 10: // SetFlag — generator not in dispatch yet
+        throw NotImplementedException(
+          '$name does not support MSE SetFlag (subclass 10) in-process; '
+          'use a remote-backed issuer or extend the dispatch table.',
+        );
+      default:
+        throw NotImplementedException(
+          '$name does not support MSE subclass $subclass.',
+        );
+    }
+    final token = hsm.generateToken(requestId, sectionParams);
+    return [
+      {
+        'tokenNo': token.tokenNo,
+        'subclass': token.tokenSubClass?.bitString.value ?? subclass,
+        'description': token.type,
+      },
+    ];
+  }
 
   @override
   Future<Map<String, Object?>> issueMeterTestToken(

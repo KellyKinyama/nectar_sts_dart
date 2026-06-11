@@ -195,67 +195,52 @@ void main() {
       },
     );
 
-    test(
-      'POST /v1/tokens/key-change -> 200 STA 2-token bundle',
-      () async {
-        final handler = buildApiHandler(_hsm());
-        final r = await _post(handler, '/v1/tokens/key-change', {
-          ..._baseParams(),
-          'new_supply_group_code': '234567',
-          'new_key_revision_number': 2,
-          'new_tariff_index': '07',
-        });
-        expect(r['status'], 200);
-        final body = r['body'] as Map<String, dynamic>;
-        expect((body['status'] as Map)['code'], 200);
-        expect(
-          (body['status'] as Map)['message'],
-          'Key change tokens issued',
-        );
-        final tokens = (body['data'] as Map)['tokens'] as List;
-        expect(tokens, hasLength(2));
-        expect(
-          tokens.map((t) => (t as Map)['subclass']).toList(),
-          [3, 4],
-        );
-        for (final t in tokens) {
-          final m = t as Map;
-          expect((m['tokenNo'] as String), hasLength(20));
-          expect(m['description'], isA<String>());
-        }
-      },
-    );
+    test('POST /v1/tokens/key-change -> 200 STA 2-token bundle', () async {
+      final handler = buildApiHandler(_hsm());
+      final r = await _post(handler, '/v1/tokens/key-change', {
+        ..._baseParams(),
+        'new_supply_group_code': '234567',
+        'new_key_revision_number': 2,
+        'new_tariff_index': '07',
+      });
+      expect(r['status'], 200);
+      final body = r['body'] as Map<String, dynamic>;
+      expect((body['status'] as Map)['code'], 200);
+      expect((body['status'] as Map)['message'], 'Key change tokens issued');
+      final tokens = (body['data'] as Map)['tokens'] as List;
+      expect(tokens, hasLength(2));
+      expect(tokens.map((t) => (t as Map)['subclass']).toList(), [3, 4]);
+      for (final t in tokens) {
+        final m = t as Map;
+        expect((m['tokenNo'] as String), hasLength(20));
+        expect(m['description'], isA<String>());
+      }
+    });
 
-    test(
-      'POST /v1/tokens/key-change -> 200 MISTY1 4-token bundle',
-      () async {
-        // MISTY1 wants a 128-bit decoder key, which requires the
-        // DKGA-04 path and a 160-bit vending key.
-        final misty1Hsm = VirtualHsmIssuer(
-          VirtualHsm(
-            VendingCommonDesKey(
-              parseHexKey('0123456789ABCDEF0123456789ABCDEF01234567'),
-            ),
+    test('POST /v1/tokens/key-change -> 200 MISTY1 4-token bundle', () async {
+      // MISTY1 wants a 128-bit decoder key, which requires the
+      // DKGA-04 path and a 160-bit vending key.
+      final misty1Hsm = VirtualHsmIssuer(
+        VirtualHsm(
+          VendingCommonDesKey(
+            parseHexKey('0123456789ABCDEF0123456789ABCDEF01234567'),
           ),
-        );
-        final handler = buildApiHandler(misty1Hsm);
-        final r = await _post(handler, '/v1/tokens/key-change', {
-          ..._baseParams(),
-          'decoder_key_generation_algorithm': '04',
-          'encryption_algorithm': 'misty1',
-          'new_supply_group_code': '234567',
-          'new_key_revision_number': 2,
-          'new_tariff_index': '07',
-        });
-        expect(r['status'], 200);
-        final tokens = ((r['body'] as Map)['data'] as Map)['tokens'] as List;
-        expect(tokens, hasLength(4));
-        expect(
-          tokens.map((t) => (t as Map)['subclass']).toList(),
-          [3, 4, 8, 9],
-        );
-      },
-    );
+        ),
+      );
+      final handler = buildApiHandler(misty1Hsm);
+      final r = await _post(handler, '/v1/tokens/key-change', {
+        ..._baseParams(),
+        'decoder_key_generation_algorithm': '04',
+        'encryption_algorithm': 'misty1',
+        'new_supply_group_code': '234567',
+        'new_key_revision_number': 2,
+        'new_tariff_index': '07',
+      });
+      expect(r['status'], 200);
+      final tokens = ((r['body'] as Map)['data'] as Map)['tokens'] as List;
+      expect(tokens, hasLength(4));
+      expect(tokens.map((t) => (t as Map)['subclass']).toList(), [3, 4, 8, 9]);
+    });
 
     test(
       'POST /v1/tokens/key-change -> 400 when new_supply_group_code missing',
@@ -275,7 +260,7 @@ void main() {
     );
 
     test(
-      'POST /v1/tokens/mse/* -> 501 NotImplemented for VirtualHsm',
+      'POST /v1/tokens/mse/clear-credit + clear-tamper -> 200 single token',
       () async {
         final handler = buildApiHandler(_hsm());
         for (final path in const [
@@ -283,12 +268,60 @@ void main() {
           '/v1/tokens/mse/clear-tamper',
         ]) {
           final r = await _post(handler, path, _baseParams());
-          expect(r['status'], 501, reason: '$path expected 501');
-          expect(
-            ((r['body'] as Map)['status'] as Map)['message'],
-            contains('MSE token'),
-          );
+          expect(r['status'], 200, reason: '$path expected 200');
+          final tokens = ((r['body'] as Map)['data'] as Map)['tokens'] as List;
+          expect(tokens, hasLength(1), reason: '$path bundle size');
+          final t = tokens.single as Map;
+          expect((t['tokenNo'] as String), hasLength(20));
+          expect(t['description'], isA<String>());
         }
+      },
+    );
+
+    test(
+      'POST /v1/tokens/mse/set-max-power -> 200 single token with payload',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/mse/set-max-power', {
+          ..._baseParams(),
+          'maximum_power_limit': 50,
+        });
+        expect(r['status'], 200);
+        final tokens = ((r['body'] as Map)['data'] as Map)['tokens'] as List;
+        expect(tokens, hasLength(1));
+        expect((tokens.single as Map)['subclass'], 0);
+      },
+    );
+
+    test(
+      'POST /v1/tokens/mse/set-tariff -> 200 single token with payload',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/mse/set-tariff', {
+          ..._baseParams(),
+          'tariff_rate': 12,
+        });
+        expect(r['status'], 200);
+        final tokens = ((r['body'] as Map)['data'] as Map)['tokens'] as List;
+        expect(tokens, hasLength(1));
+        expect((tokens.single as Map)['subclass'], 2);
+      },
+    );
+
+    test(
+      'POST /v1/tokens/mse/set-flag -> 501 NotImplemented for VirtualHsm',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final r = await _post(handler, '/v1/tokens/mse/set-flag', {
+          ..._baseParams(),
+          'flag_type': 1,
+          'flag_value': 1,
+        });
+        expect(r['status'], 501);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'],
+          contains('SetFlag'),
+        );
       },
     );
 
