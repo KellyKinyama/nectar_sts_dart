@@ -50,3 +50,14 @@ class TransferElectricityCreditTokenGenerator
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 }
+
+/// Concrete Class 0 / SubClass 4 generator (currency-denominated
+/// electricity top-up). Identical wire layout to subclass 0 — only
+/// the embedded subclass nibble differs.
+class ElectricityCurrencyCreditTokenGenerator
+    extends Class0TokenGenerator<ElectricityCurrencyCreditToken> {
+  ElectricityCurrencyCreditTokenGenerator(
+    DecoderKey decoderKey,
+    EncryptionAlgorithm encryptionAlgorithm,
+  ) : super(decoderKey, encryptionAlgorithm);
+}

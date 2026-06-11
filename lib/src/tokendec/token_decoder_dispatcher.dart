@@ -2,10 +2,10 @@ import '../base/bit_string.dart';
 import '../encryption/encryption_algorithm.dart';
 import '../exceptions/exceptions.dart';
 import '../keys/decoder_key.dart';
+import '../token/class0_tokens.dart';
 import '../token/token.dart';
 import 'class1_token_decoder.dart';
 import 'class2_token_decoder.dart';
-import 'transfer_electricity_credit_decoder.dart';
 
 /// Result of a top-level decode operation. Either a fully-rehydrated
 /// [Token] on success, or a structured [DecodeFailure] on any error.
@@ -50,11 +50,42 @@ class TokenDecoderDispatcher {
       final klass = r.tokenClass.bitString.value;
       switch (klass) {
         case 0:
-          final tok = TransferElectricityCreditDecoder(
+          // Class 0 holds two ported subclasses today (0 = kWh
+          // electricity credit, 4 = currency-denominated electricity
+          // credit). The subclass nibble lives at bits 60..63 of the
+          // decrypted data block, so we decrypt once here and route
+          // to the right concrete token type without paying for a
+          // second decrypt in a child decoder.
+          final decrypted = encryptionAlgorithm.decrypt(
             decoderKey,
-            encryptionAlgorithm,
-          ).decodeBinary66(requestID, binary66);
-          return DecodeAccepted(tok);
+            r.encrypted64,
+          );
+          final decrypted64 = BitString.fromValue(decrypted.value, 64);
+          final encrypted64 = BitString.fromValue(r.encrypted64.value, 64);
+          final sub = decrypted64.extractBits(60, 4).value;
+          switch (sub) {
+            case 0:
+              return DecodeAccepted(
+                TransferElectricityCreditToken.decoded(
+                  requestID,
+                  decrypted64,
+                  encrypted64,
+                ),
+              );
+            case 4:
+              return DecodeAccepted(
+                ElectricityCurrencyCreditToken.decoded(
+                  requestID,
+                  decrypted64,
+                  encrypted64,
+                ),
+              );
+            default:
+              return DecodeFailure(
+                TokenError('Unsupported Class 0 subclass: $sub'),
+                'unsupported class 0 subclass',
+              );
+          }
         case 1:
           final tok = Class1TokenDecoder(
             decoderKey,

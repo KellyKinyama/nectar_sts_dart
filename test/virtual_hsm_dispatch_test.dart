@@ -4,48 +4,48 @@ import 'package:nectar_sts_dart/nectar_sts_dart.dart';
 import 'package:test/test.dart';
 
 VirtualHsm _hsm() => VirtualHsm(
-  VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
-);
+      VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+    );
 
 // DKGA-04 + STA needs a 160-bit (20-byte) vending key. Reuse the
 // CTSA24/25/26 test vector key for byte-identical compatibility.
 VirtualHsm _hsm04() => VirtualHsm(
-  VendingUniqueDesKey(
-    Uint8List.fromList([
-      0xab,
-      0xab,
-      0xab,
-      0xab,
-      0xab,
-      0xab,
-      0xab,
-      0xab,
-      0x94,
-      0x94,
-      0x94,
-      0x94,
-      0x94,
-      0x94,
-      0x94,
-      0x94,
-      0x01,
-      0x23,
-      0x45,
-      0x67,
-    ]),
-  ),
-);
+      VendingUniqueDesKey(
+        Uint8List.fromList([
+          0xab,
+          0xab,
+          0xab,
+          0xab,
+          0xab,
+          0xab,
+          0xab,
+          0xab,
+          0x94,
+          0x94,
+          0x94,
+          0x94,
+          0x94,
+          0x94,
+          0x94,
+          0x94,
+          0x01,
+          0x23,
+          0x45,
+          0x67,
+        ]),
+      ),
+    );
 
 Map<String, dynamic> _dkga02Native() => {
-  VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
-  VirtualHsmParams.encryptionAlgorithm: 'sta',
-  VirtualHsmParams.keyType: 2,
-  VirtualHsmParams.supplyGroupCode: '123456',
-  VirtualHsmParams.tariffIndex: '07',
-  VirtualHsmParams.keyRevisionNo: 1,
-  VirtualHsmParams.issuerIdentificationNo: '600727',
-  VirtualHsmParams.decoderReferenceNumber: '12345678901',
-};
+      VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+      VirtualHsmParams.encryptionAlgorithm: 'sta',
+      VirtualHsmParams.keyType: 2,
+      VirtualHsmParams.supplyGroupCode: '123456',
+      VirtualHsmParams.tariffIndex: '07',
+      VirtualHsmParams.keyRevisionNo: 1,
+      VirtualHsmParams.issuerIdentificationNo: '600727',
+      VirtualHsmParams.decoderReferenceNumber: '12345678901',
+    };
 
 void main() {
   group('VirtualHsm params dispatch', () {
@@ -76,6 +76,41 @@ void main() {
     });
 
     test(
+      'Class 0/4 electricity-currency credit round-trips via params API',
+      () {
+        final hsm = _hsm();
+        final params = {
+          ..._dkga02Native(),
+          VirtualHsmParams.tokenClass: '0',
+          VirtualHsmParams.tokenSubclass: '4',
+          VirtualHsmParams.amount: 42.0,
+          VirtualHsmParams.tokenId: '2024-06-01T12:00:00Z',
+          VirtualHsmParams.randomNo: 3,
+          VirtualHsmParams.baseDate: '1993',
+        };
+        final generated = hsm.generateToken('req-A4', params);
+        expect(generated, isA<ElectricityCurrencyCreditToken>());
+        expect(generated.tokenNo, hasLength(20));
+        expect(generated.tokenSubClass?.bitString.value, 4);
+
+        final decoded = hsm.decodeToken(
+          'req-A4.decode',
+          generated.tokenNo,
+          params,
+        );
+        expect(
+          decoded,
+          isA<ElectricityCurrencyCreditToken>(),
+          reason: 'wire bytes must carry subclass 4',
+        );
+        final t = decoded as ElectricityCurrencyCreditToken;
+        expect(t.tokenSubClass?.bitString.value, 4);
+        expect(t.amountPurchased!.unitsPurchased, closeTo(42.0, 1e-9));
+        expect(t.randomNo!.bitString.value, 3);
+      },
+    );
+
+    test(
       'Class 1/0 InitiateMeterTestOrDisplay1 round-trips via params API',
       () {
         final hsm = _hsm();
@@ -88,9 +123,8 @@ void main() {
         };
         final generated = hsm.generateToken('req-B1', params);
         expect(generated, isA<InitiateMeterTestOrDisplay1Token>());
-        final decoded =
-            hsm.decodeToken('req-B1.dec', generated.tokenNo, params)
-                as InitiateMeterTestOrDisplay1Token;
+        final decoded = hsm.decodeToken('req-B1.dec', generated.tokenNo, params)
+            as InitiateMeterTestOrDisplay1Token;
         expect(decoded.manufacturerCode!.value, 0xA5);
         expect(decoded.control!.value, 0x123456789);
       },
@@ -108,9 +142,8 @@ void main() {
           VirtualHsmParams.control: 0xABCDEF1,
         };
         final generated = hsm.generateToken('req-C1', params);
-        final decoded =
-            hsm.decodeToken('req-C1.dec', generated.tokenNo, params)
-                as InitiateMeterTestOrDisplay2Token;
+        final decoded = hsm.decodeToken('req-C1.dec', generated.tokenNo, params)
+            as InitiateMeterTestOrDisplay2Token;
         expect(decoded.manufacturerCode!.value, 0xBEEF);
         expect(decoded.control!.value, 0xABCDEF1);
       },
@@ -133,9 +166,8 @@ void main() {
         VirtualHsmParams.tokenId: '2024-06-01T12:00:00Z',
       };
       final generated = hsm.generateToken('req-D', params);
-      final decoded =
-          hsm.decodeToken('req-D.dec', generated.tokenNo, params)
-              as TransferElectricityCreditToken;
+      final decoded = hsm.decodeToken('req-D.dec', generated.tokenNo, params)
+          as TransferElectricityCreditToken;
       expect(decoded.amountPurchased!.unitsPurchased, closeTo(10.0, 1e-9));
     });
 
@@ -187,7 +219,8 @@ void main() {
       },
     );
 
-    test('MISTY1 encryption_algorithm needs a 16-byte decoder key '
+    test(
+        'MISTY1 encryption_algorithm needs a 16-byte decoder key '
         '(DKGA-02 derives only 8 bytes)', () {
       final hsm = _hsm();
       expect(
@@ -230,17 +263,18 @@ void main() {
     Map<String, dynamic> dkga04Native({
       required String baseDate,
       required int krn,
-    }) => {
-      VirtualHsmParams.decoderKeyGenerationAlgorithm: '04',
-      VirtualHsmParams.encryptionAlgorithm: 'sta',
-      VirtualHsmParams.keyType: 2,
-      VirtualHsmParams.supplyGroupCode: '123457',
-      VirtualHsmParams.tariffIndex: '01',
-      VirtualHsmParams.keyRevisionNo: krn,
-      VirtualHsmParams.issuerIdentificationNo: '600727',
-      VirtualHsmParams.decoderReferenceNumber: '00000000000',
-      VirtualHsmParams.baseDate: baseDate,
-    };
+    }) =>
+        {
+          VirtualHsmParams.decoderKeyGenerationAlgorithm: '04',
+          VirtualHsmParams.encryptionAlgorithm: 'sta',
+          VirtualHsmParams.keyType: 2,
+          VirtualHsmParams.supplyGroupCode: '123457',
+          VirtualHsmParams.tariffIndex: '01',
+          VirtualHsmParams.keyRevisionNo: krn,
+          VirtualHsmParams.issuerIdentificationNo: '600727',
+          VirtualHsmParams.decoderReferenceNumber: '00000000000',
+          VirtualHsmParams.baseDate: baseDate,
+        };
 
     test('DKGA-04 + STA Class 0 round-trips', () {
       final hsm = _hsm04();
@@ -271,30 +305,29 @@ void main() {
           VirtualHsmParams.tokenId: bd == '2035'
               ? '2035-06-01T09:00:00Z'
               : (bd == '2014'
-                    ? '2014-06-01T09:00:00Z'
-                    : '2008-06-01T09:00:00Z'),
+                  ? '2014-06-01T09:00:00Z'
+                  : '2008-06-01T09:00:00Z'),
         };
         final t = hsm.generateToken('req-bd-$bd', params);
-        final d =
-            hsm.decodeToken('req-bd-$bd.dec', t.tokenNo, params)
-                as TransferElectricityCreditToken;
+        final d = hsm.decodeToken('req-bd-$bd.dec', t.tokenNo, params)
+            as TransferElectricityCreditToken;
         expect(d.amountPurchased!.unitsPurchased, closeTo(1.0, 1e-9));
       }
     });
 
     Map<String, dynamic> dkga02Native() => {
-      VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
-      VirtualHsmParams.encryptionAlgorithm: 'sta',
-      VirtualHsmParams.keyType: 2,
-      VirtualHsmParams.supplyGroupCode: '123456',
-      VirtualHsmParams.tariffIndex: '01',
-      VirtualHsmParams.keyRevisionNo: 1,
-      VirtualHsmParams.issuerIdentificationNo: '600727',
-      VirtualHsmParams.decoderReferenceNumber: '00000000000',
-      VirtualHsmParams.baseDate: '1993',
-      VirtualHsmParams.tokenId: '2024-06-01T12:00:00Z',
-      VirtualHsmParams.randomNo: 5,
-    };
+          VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+          VirtualHsmParams.encryptionAlgorithm: 'sta',
+          VirtualHsmParams.keyType: 2,
+          VirtualHsmParams.supplyGroupCode: '123456',
+          VirtualHsmParams.tariffIndex: '01',
+          VirtualHsmParams.keyRevisionNo: 1,
+          VirtualHsmParams.issuerIdentificationNo: '600727',
+          VirtualHsmParams.decoderReferenceNumber: '00000000000',
+          VirtualHsmParams.baseDate: '1993',
+          VirtualHsmParams.tokenId: '2024-06-01T12:00:00Z',
+          VirtualHsmParams.randomNo: 5,
+        };
 
     test('Class 2/0 SetMaximumPowerLimit round-trips', () {
       final hsm = _hsm();
@@ -306,9 +339,8 @@ void main() {
       };
       final generated = hsm.generateToken('mpl', params);
       expect(generated, isA<SetMaximumPowerLimitToken>());
-      final decoded =
-          hsm.decodeToken('mpl.dec', generated.tokenNo, params)
-              as SetMaximumPowerLimitToken;
+      final decoded = hsm.decodeToken('mpl.dec', generated.tokenNo, params)
+          as SetMaximumPowerLimitToken;
       expect(decoded.maximumPowerLimit!.value, 16384);
     });
 
@@ -322,9 +354,8 @@ void main() {
       };
       final generated = hsm.generateToken('cc', params);
       expect(generated, isA<ClearCreditToken>());
-      final decoded =
-          hsm.decodeToken('cc.dec', generated.tokenNo, params)
-              as ClearCreditToken;
+      final decoded = hsm.decodeToken('cc.dec', generated.tokenNo, params)
+          as ClearCreditToken;
       expect(decoded.register!.bitString.value, 0xFFFF);
     });
 
@@ -338,9 +369,8 @@ void main() {
       };
       final generated = hsm.generateToken('tr', params);
       expect(generated, isA<SetTariffRateToken>());
-      final decoded =
-          hsm.decodeToken('tr.dec', generated.tokenNo, params)
-              as SetTariffRateToken;
+      final decoded = hsm.decodeToken('tr.dec', generated.tokenNo, params)
+          as SetTariffRateToken;
       expect(decoded.rate!.value, 12345);
     });
 
@@ -354,9 +384,8 @@ void main() {
       };
       final generated = hsm.generateToken('ctc', params);
       expect(generated, isA<ClearTamperConditionToken>());
-      final decoded =
-          hsm.decodeToken('ctc.dec', generated.tokenNo, params)
-              as ClearTamperConditionToken;
+      final decoded = hsm.decodeToken('ctc.dec', generated.tokenNo, params)
+          as ClearTamperConditionToken;
       expect(decoded.pad!.bitString.value, 0x1234);
     });
 
@@ -375,9 +404,8 @@ void main() {
       };
       final generated = hsm.generateToken('mppul', params);
       expect(generated, isA<SetMaximumPhasePowerUnbalanceLimitToken>());
-      final decoded =
-          hsm.decodeToken('mppul.dec', generated.tokenNo, params)
-              as SetMaximumPhasePowerUnbalanceLimitToken;
+      final decoded = hsm.decodeToken('mppul.dec', generated.tokenNo, params)
+          as SetMaximumPhasePowerUnbalanceLimitToken;
       expect(
         decoded.maximumPhasePowerUnbalanceLimit!.bitString.value,
         equals(mppul.bitString.value),
@@ -494,9 +522,8 @@ void main() {
         VirtualHsmParams.tokenId: issuedAt.toIso8601String(),
       };
       final t = hsm.generateToken('tid', params);
-      final d =
-          hsm.decodeToken('tid.dec', t.tokenNo, params)
-              as TransferElectricityCreditToken;
+      final d = hsm.decodeToken('tid.dec', t.tokenNo, params)
+          as TransferElectricityCreditToken;
       // STS encodes minute precision; seconds get truncated.
       expect(d.tokenIdentifier!.timeOfIssue.year, 2024);
       expect(d.tokenIdentifier!.timeOfIssue.month, 6);

@@ -52,6 +52,7 @@ export 'src/tokengen/class1_token_generators.dart';
 export 'src/tokengen/class2_token_generators.dart';
 
 export 'src/tokendec/transfer_electricity_credit_decoder.dart';
+export 'src/tokendec/electricity_currency_credit_decoder.dart';
 export 'src/tokendec/class1_token_decoder.dart';
 export 'src/tokendec/class2_token_decoder.dart';
 export 'src/tokendec/token_decoder_dispatcher.dart';

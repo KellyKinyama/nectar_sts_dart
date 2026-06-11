@@ -67,3 +67,29 @@ class TransferElectricityCreditToken extends Class0Token {
     return t;
   }
 }
+
+/// Concrete: Class 0 / SubClass 4, "Electricity Currency" credit
+/// (currency-denominated electricity top-up). Same 64-bit data block
+/// layout as [TransferElectricityCreditToken]; the [TokenSubClass]
+/// nibble carries `4` instead of `0` so a meter can distinguish the
+/// two when the API contract calls for a currency-credit reply.
+class ElectricityCurrencyCreditToken extends Class0Token {
+  ElectricityCurrencyCreditToken(super.requestID) {
+    tokenClass = TokenClass.electricityCreditTransfer();
+    tokenSubClass = TokenSubClass.electricityCurrencyCredit();
+  }
+
+  @override
+  String get type => 'ElectricityCurrency_04';
+
+  factory ElectricityCurrencyCreditToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = ElectricityCurrencyCreditToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    t.encryptedTokenBitString = null;
+    return t;
+  }
+}

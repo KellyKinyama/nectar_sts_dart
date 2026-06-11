@@ -129,6 +129,13 @@ extension VirtualHsmDispatch on VirtualHsm {
     switch (dispatch) {
       case '0,0':
         return _generateElectricityCredit(requestID, params, decoderKey, ea);
+      case '0,4':
+        return _generateElectricityCurrencyCredit(
+          requestID,
+          params,
+          decoderKey,
+          ea,
+        );
       case '1,0':
         return _generateClass1Display1(requestID, params, decoderKey, ea);
       case '1,1':
@@ -339,6 +346,23 @@ extension VirtualHsmDispatch on VirtualHsm {
       )
       ..randomNo = _randomFromParams(params);
     TransferElectricityCreditTokenGenerator(decoderKey, ea).generate(token);
+    return token;
+  }
+
+  ElectricityCurrencyCreditToken _generateElectricityCurrencyCredit(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final token = ElectricityCurrencyCreditToken(requestID)
+      ..amountPurchased = Amount(_doubleParam(params, VirtualHsmParams.amount))
+      ..tokenIdentifier = TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      )
+      ..randomNo = _randomFromParams(params);
+    ElectricityCurrencyCreditTokenGenerator(decoderKey, ea).generate(token);
     return token;
   }
 

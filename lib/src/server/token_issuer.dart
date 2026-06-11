@@ -445,17 +445,18 @@ class VirtualHsmIssuer implements TokenIssuer {
         'deployment).',
       );
     }
-    // Caller is expected to have already resolved money -> kWh via
-    // the tariff (same contract as the regular /v1/tokens endpoint
-    // when given a server-side tariff). We mint a normal class 0 /
-    // subclass 0 electricity-credit token and report the wire-
-    // format scaled amount the remote issuer would have produced
-    // (x100000 per the currency-credit Prism convention) so callers
-    // get a parity-shaped reply.
+    // Mint a Class 0 / Subclass 4 ElectricityCurrencyCreditToken so
+    // the wire bytes literally carry the currency-credit subclass
+    // nibble (4) — a meter decoding the token can distinguish it
+    // from a plain kWh credit (subclass 0). Caller is expected to
+    // have already resolved money -> kWh via the tariff (same
+    // contract as the regular /v1/tokens endpoint with a server-
+    // side tariff); the wire-format scaled amount (x100000) is
+    // reported for parity with remote-issuer reply shape.
     final sectionParams = <String, dynamic>{
       ...params,
       VirtualHsmParams.tokenClass: '0',
-      VirtualHsmParams.tokenSubclass: '0',
+      VirtualHsmParams.tokenSubclass: '4',
     };
     final token = hsm.generateToken(requestId, sectionParams);
     final amountRaw = params[VirtualHsmParams.amount];
@@ -465,7 +466,7 @@ class VirtualHsmIssuer implements TokenIssuer {
     return [
       {
         'tokenNo': token.tokenNo,
-        'subclass': token.tokenSubClass?.bitString.value ?? 0,
+        'subclass': token.tokenSubClass?.bitString.value ?? 4,
         'description': token.type,
         'scaledAmount': amountKwh * 100000,
       },

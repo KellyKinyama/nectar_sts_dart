@@ -436,7 +436,8 @@ void main() {
         expect(tokens, hasLength(1));
         final t = tokens.single as Map;
         expect((t['tokenNo'] as String), hasLength(20));
-        expect(t['subclass'], 0);
+        expect(t['subclass'], 4);
+        expect(t['description'], 'ElectricityCurrency_04');
         expect(t['scaledAmount'], 50.0 * 100000);
       },
     );
