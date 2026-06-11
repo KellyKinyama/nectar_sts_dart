@@ -8,3 +8,6 @@ build/
 .env.local
 vending.json
 meters.json
+
+# Generated proposal decks (rebuild with: python docs/build_pptx.py)
+docs/*.pptx
