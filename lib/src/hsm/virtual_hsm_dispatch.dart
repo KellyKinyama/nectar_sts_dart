@@ -260,11 +260,11 @@ extension VirtualHsmDispatch on VirtualHsm {
           ),
           individualAccountIdentificationNumber:
               IndividualAccountIdentificationNumber(
-            _required(
-              params,
-              VirtualHsmParams.decoderReferenceNumber,
-            ).toString(),
-          ),
+                _required(
+                  params,
+                  VirtualHsmParams.decoderReferenceNumber,
+                ).toString(),
+              ),
           keyType: KeyType(_intParam(params, VirtualHsmParams.keyType)),
           supplyGroupCode: SupplyGroupCode(
             _required(params, VirtualHsmParams.supplyGroupCode).toString(),
@@ -595,7 +595,7 @@ extension VirtualHsmDispatch on VirtualHsm {
   }
 
   SetMaximumPhasePowerUnbalanceLimitToken
-      _generateClass2SetMaximumPhasePowerUnbalanceLimit(
+  _generateClass2SetMaximumPhasePowerUnbalanceLimit(
     String requestID,
     Map<String, dynamic> params,
     DecoderKey decoderKey,
