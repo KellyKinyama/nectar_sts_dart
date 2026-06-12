@@ -534,6 +534,48 @@ class VirtualHsmIssuer implements TokenIssuer {
 
   @override
   Future<void> close() async {}
+
+  /// Issue a Class 0 / SubClass 0 [TransferElectricityCreditToken]
+  /// from a typed meter-config map plus the kWh amount. Convenience
+  /// wrapper over [generateToken] that fills in `class=0, subclass=0`.
+  Token issueElectricityToken({
+    required String requestId,
+    required double amountKwh,
+    required Map<String, dynamic> meterParams,
+  }) => generateToken(requestId, {
+    ...meterParams,
+    VirtualHsmParams.tokenClass: '0',
+    VirtualHsmParams.tokenSubclass: '0',
+    VirtualHsmParams.amount: amountKwh,
+  });
+
+  /// Issue a Class 0 / SubClass 1 [TransferWaterCreditToken]. The
+  /// [amount] is in the meter's water units (typically m\u00b3). All
+  /// other identification / key-derivation params come from
+  /// [meterParams].
+  Token issueWaterToken({
+    required String requestId,
+    required double amount,
+    required Map<String, dynamic> meterParams,
+  }) => generateToken(requestId, {
+    ...meterParams,
+    VirtualHsmParams.tokenClass: '0',
+    VirtualHsmParams.tokenSubclass: '1',
+    VirtualHsmParams.amount: amount,
+  });
+
+  /// Issue a Class 0 / SubClass 2 [TransferGasCreditToken]. The
+  /// [amount] is in the meter's gas units (typically m\u00b3).
+  Token issueGasToken({
+    required String requestId,
+    required double amount,
+    required Map<String, dynamic> meterParams,
+  }) => generateToken(requestId, {
+    ...meterParams,
+    VirtualHsmParams.tokenClass: '0',
+    VirtualHsmParams.tokenSubclass: '2',
+    VirtualHsmParams.amount: amount,
+  });
 }
 
 Map<String, Object?> _virtualHsmVerifyTokenShape(String tokenNo, Token token) {
@@ -726,13 +768,14 @@ class PrismIssuer implements TokenIssuer {
   ) async {
     final tokenClass = params[VirtualHsmParams.tokenClass]?.toString();
     final subclass = params[VirtualHsmParams.tokenSubclass]?.toString() ?? '0';
-    if (tokenClass != '0' || subclass != '0') {
+    if (tokenClass != '0' || (subclass != '0' && subclass != '1' && subclass != '2')) {
       throw NotImplementedException(
-        'PrismIssuer.generateToken: only class 0 / subclass 0 '
-        '(electricity credit) is wired through to Prism today. '
+        'PrismIssuer.generateToken: only class 0 / subclass 0..2 '
+        '(electricity / water / gas credit) are wired through to Prism today. '
         'Got class=$tokenClass subclass=$subclass.',
       );
     }
+    final subclassInt = int.parse(subclass);
 
     final meterConfig = _meterConfigFromParams(params);
     final amountKwh = _requiredDouble(params, VirtualHsmParams.amount);
@@ -741,22 +784,22 @@ class PrismIssuer implements TokenIssuer {
     return await _withClient((client) async {
       final accessToken = await _getAccessToken(client, requestId);
 
-      // Prism expects scaled units: ×10 for kWh credit subclass 0.
-      // Currency-credit variants (subclasses 4–7) would use ×100000
-      // but they're not wired here.
+      // Prism expects scaled units: ×10 for kWh / m³ / m³ (gas)
+      // credit subclasses 0..2. Currency-credit variants (4–7)
+      // would use ×100000 but they're not wired here.
       final scaled = amountKwh * 10;
       final tokens = await client.issueCreditToken(
         messageId: requestId,
         accessToken: accessToken,
         meterConfig: meterConfig,
-        subclass: 0,
+        subclass: subclassInt,
         transferAmount: scaled,
         tokenTime: tokenTime,
         flags: prism.TokenIssueFlags.externalClock,
       );
 
-      final picked = _pickElectricityCredit(tokens);
-      return _toDartToken(requestId, picked, params);
+      final picked = _pickCreditForSubclass(tokens, subclassInt);
+      return _toDartToken(requestId, picked, params, subclassInt);
     });
   }
 
@@ -768,13 +811,14 @@ class PrismIssuer implements TokenIssuer {
   ) async {
     final tokenClass = params[VirtualHsmParams.tokenClass]?.toString();
     final subclass = params[VirtualHsmParams.tokenSubclass]?.toString() ?? '0';
-    if (tokenClass != '0' || subclass != '0') {
+    if (tokenClass != '0' || (subclass != '0' && subclass != '1' && subclass != '2')) {
       throw NotImplementedException(
-        'PrismIssuer.decodeToken: only class 0 / subclass 0 '
-        '(electricity credit) is wired through to Prism today. '
+        'PrismIssuer.decodeToken: only class 0 / subclass 0..2 '
+        '(electricity / water / gas credit) are wired through to Prism today. '
         'Got class=$tokenClass subclass=$subclass.',
       );
     }
+    final subclassInt = int.parse(subclass);
 
     final meterConfig = _meterConfigFromParams(params);
     return await _withClient((client) async {
@@ -798,7 +842,7 @@ class PrismIssuer implements TokenIssuer {
           'decoded Token struct.',
         );
       }
-      return _toDartToken(requestId, pt, params);
+      return _toDartToken(requestId, pt, params, subclassInt);
     });
   }
 
@@ -1111,9 +1155,20 @@ class PrismIssuer implements TokenIssuer {
     return when.millisecondsSinceEpoch ~/ 1000;
   }
 
-  prism.PrismToken _pickElectricityCredit(List<prism.PrismToken> tokens) {
-    for (final t in tokens) {
-      if (t.description == 'Credit:Electricity') return t;
+  prism.PrismToken _pickCreditForSubclass(
+    List<prism.PrismToken> tokens,
+    int subclass,
+  ) {
+    final wanted = switch (subclass) {
+      0 => 'Credit:Electricity',
+      1 => 'Credit:Water',
+      2 => 'Credit:Gas',
+      _ => null,
+    };
+    if (wanted != null) {
+      for (final t in tokens) {
+        if (t.description == wanted) return t;
+      }
     }
     if (tokens.isNotEmpty) return tokens.first;
     throw const NotImplementedException(
@@ -1125,20 +1180,38 @@ class PrismIssuer implements TokenIssuer {
     String requestId,
     prism.PrismToken pt,
     Map<String, dynamic> params,
+    int subclass,
   ) {
-    final out = TransferElectricityCreditToken(requestId);
+    final Token out = switch (subclass) {
+      1 => TransferWaterCreditToken(requestId),
+      2 => TransferGasCreditToken(requestId),
+      _ => TransferElectricityCreditToken(requestId),
+    };
     out.encryptedTokenBitString = TokenTransposition.tokenNoToBinary66(
       pt.tokenDec,
     );
     final scaled = double.tryParse(pt.scaledAmount);
     if (scaled != null) {
-      out.amountPurchased = Amount(scaled);
+      if (out is TransferElectricityCreditToken) {
+        out.amountPurchased = Amount(scaled);
+      } else if (out is TransferWaterCreditToken) {
+        out.amountPurchased = Amount(scaled);
+      } else if (out is TransferGasCreditToken) {
+        out.amountPurchased = Amount(scaled);
+      }
     }
     final baseDate = _baseDate(params);
-    out.tokenIdentifier = TokenIdentifier.fromBitString(
+    final tid = TokenIdentifier.fromBitString(
       BitString.fromValue(pt.tid & 0xFFFFFF, 24),
       baseDate: baseDate,
     );
+    if (out is TransferElectricityCreditToken) {
+      out.tokenIdentifier = tid;
+    } else if (out is TransferWaterCreditToken) {
+      out.tokenIdentifier = tid;
+    } else if (out is TransferGasCreditToken) {
+      out.tokenIdentifier = tid;
+    }
     return out;
   }
 
@@ -1180,6 +1253,45 @@ class PrismIssuer implements TokenIssuer {
     await _pool.closeAll();
     _cachedAuth = null;
   }
+
+  /// Issue a Class 0 / SubClass 0 electricity credit token via the
+  /// remote Prism HSM. Convenience wrapper over [generateToken].
+  Future<Token> issueElectricityToken({
+    required String requestId,
+    required double amountKwh,
+    required Map<String, dynamic> meterParams,
+  }) => generateToken(requestId, {
+    ...meterParams,
+    VirtualHsmParams.tokenClass: '0',
+    VirtualHsmParams.tokenSubclass: '0',
+    VirtualHsmParams.amount: amountKwh,
+  });
+
+  /// Issue a Class 0 / SubClass 1 water credit token via the remote
+  /// Prism HSM. [amount] is in the meter's water units (typically m\u00b3).
+  Future<Token> issueWaterToken({
+    required String requestId,
+    required double amount,
+    required Map<String, dynamic> meterParams,
+  }) => generateToken(requestId, {
+    ...meterParams,
+    VirtualHsmParams.tokenClass: '0',
+    VirtualHsmParams.tokenSubclass: '1',
+    VirtualHsmParams.amount: amount,
+  });
+
+  /// Issue a Class 0 / SubClass 2 gas credit token via the remote
+  /// Prism HSM. [amount] is in the meter's gas units (typically m\u00b3).
+  Future<Token> issueGasToken({
+    required String requestId,
+    required double amount,
+    required Map<String, dynamic> meterParams,
+  }) => generateToken(requestId, {
+    ...meterParams,
+    VirtualHsmParams.tokenClass: '0',
+    VirtualHsmParams.tokenSubclass: '2',
+    VirtualHsmParams.amount: amount,
+  });
 }
 
 class _CachedAuth {

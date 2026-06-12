@@ -31,17 +31,23 @@ sealed class ApplyResult {
   const ApplyResult();
 }
 
-/// A Class 0/0 credit token was accepted and the balance was updated.
+/// A Class 0 credit token (electricity, water, or gas) was accepted
+/// and the matching balance was updated. [commodity] is one of
+/// `'electricity'`, `'water'`, `'gas'`; [amountKwh] / [newBalanceKwh]
+/// are unit-agnostic numeric amounts (kWh for electricity, m³ for
+/// water/gas) named for backwards compatibility.
 class ApplyAccepted extends ApplyResult {
   final double amountKwh;
   final double newBalanceKwh;
   final int tidMinutes;
   final DateTime issuedAt;
+  final String commodity;
   const ApplyAccepted({
     required this.amountKwh,
     required this.newBalanceKwh,
     required this.tidMinutes,
     required this.issuedAt,
+    this.commodity = 'electricity',
   });
 }
 
@@ -207,6 +213,7 @@ class AppliedTokenRecord {
   final int tidMinutes;
   final DateTime issuedAt;
   final DateTime appliedAt;
+  final String commodity;
 
   const AppliedTokenRecord({
     required this.tokenNo,
@@ -214,6 +221,7 @@ class AppliedTokenRecord {
     required this.tidMinutes,
     required this.issuedAt,
     required this.appliedAt,
+    this.commodity = 'electricity',
   });
 
   Map<String, dynamic> toJson() => {
@@ -222,6 +230,7 @@ class AppliedTokenRecord {
     'tid_minutes': tidMinutes,
     'issued_at': issuedAt.toUtc().toIso8601String(),
     'applied_at': appliedAt.toUtc().toIso8601String(),
+    if (commodity != 'electricity') 'commodity': commodity,
   };
 
   factory AppliedTokenRecord.fromJson(Map<String, dynamic> j) =>
@@ -231,6 +240,7 @@ class AppliedTokenRecord {
         tidMinutes: (j['tid_minutes'] as num).toInt(),
         issuedAt: DateTime.parse(j['issued_at'] as String),
         appliedAt: DateTime.parse(j['applied_at'] as String),
+        commodity: (j['commodity'] as String?) ?? 'electricity',
       );
 }
 
@@ -329,6 +339,16 @@ class VirtualMeter {
   Uint8List decoderKeyBytes;
   final String encryptionAlgorithmName; // 'sta' | 'dea' | 'misty1'
   double balanceKwh;
+
+  /// Current water-credit balance in the meter's water units
+  /// (typically m³). Incremented by accepted
+  /// [TransferWaterCreditToken]s. Persisted alongside [balanceKwh].
+  double balanceWater;
+
+  /// Current gas-credit balance in the meter's gas units (typically
+  /// m³). Incremented by accepted [TransferGasCreditToken]s.
+  double balanceGas;
+
   final List<AppliedTokenRecord> appliedTokens;
   final List<AppliedManagementTokenRecord> appliedManagementTokens;
   final DateTime createdAt;
@@ -389,6 +409,8 @@ class VirtualMeter {
     required this.decoderKeyBytes,
     this.encryptionAlgorithmName = 'sta',
     this.balanceKwh = 0.0,
+    this.balanceWater = 0.0,
+    this.balanceGas = 0.0,
     List<AppliedTokenRecord>? appliedTokens,
     List<AppliedManagementTokenRecord>? appliedManagementTokens,
     DateTime? createdAt,
@@ -528,29 +550,73 @@ class VirtualMeter {
       return _applyMaximumPhasePowerUnbalanceLimit(tokenNo, token);
     }
 
-    if (token is! TransferElectricityCreditToken) {
+    if (token is TransferElectricityCreditToken) {
+      return _applyTransferCredit(tokenNo, token, 'electricity');
+    }
+    if (token is TransferWaterCreditToken) {
+      return _applyTransferCredit(tokenNo, token, 'water');
+    }
+    if (token is TransferGasCreditToken) {
+      return _applyTransferCredit(tokenNo, token, 'gas');
+    }
+
+    return ApplyNonCredit(token.type);
+  }
+
+  ApplyResult _applyTransferCredit(
+    String tokenNo,
+    Token token,
+    String commodity,
+  ) {
+    final double amount;
+    final TokenIdentifier tid_;
+    if (token is TransferElectricityCreditToken) {
+      amount = token.amountPurchased!.unitsPurchased;
+      tid_ = token.tokenIdentifier!;
+    } else if (token is TransferWaterCreditToken) {
+      amount = token.amountPurchased!.unitsPurchased;
+      tid_ = token.tokenIdentifier!;
+    } else if (token is TransferGasCreditToken) {
+      amount = token.amountPurchased!.unitsPurchased;
+      tid_ = token.tokenIdentifier!;
+    } else {
       return ApplyNonCredit(token.type);
     }
 
-    final tid = token.tokenIdentifier!.bitString.value;
-    final alreadyApplied = appliedTokens.any((r) => r.tidMinutes == tid);
+    final tid = tid_.bitString.value;
+    final alreadyApplied = appliedTokens.any(
+      (r) => r.tidMinutes == tid && r.commodity == commodity,
+    );
     if (alreadyApplied) return ApplyReplay(tid);
 
-    final amount = token.amountPurchased!.unitsPurchased;
-    balanceKwh += amount;
+    final double newBalance;
+    switch (commodity) {
+      case 'water':
+        balanceWater += amount;
+        newBalance = balanceWater;
+      case 'gas':
+        balanceGas += amount;
+        newBalance = balanceGas;
+      default:
+        balanceKwh += amount;
+        newBalance = balanceKwh;
+    }
+
     final record = AppliedTokenRecord(
       tokenNo: tokenNo,
       amountKwh: amount,
       tidMinutes: tid,
-      issuedAt: token.tokenIdentifier!.timeOfIssue,
+      issuedAt: tid_.timeOfIssue,
       appliedAt: DateTime.now().toUtc(),
+      commodity: commodity,
     );
     appliedTokens.add(record);
     return ApplyAccepted(
       amountKwh: amount,
-      newBalanceKwh: balanceKwh,
+      newBalanceKwh: newBalance,
       tidMinutes: tid,
       issuedAt: record.issuedAt,
+      commodity: commodity,
     );
   }
 
@@ -817,12 +883,14 @@ class VirtualMeter {
   // ---- persistence ---------------------------------------------
 
   Map<String, dynamic> toJson() => {
-    'schema': 'nectar_sts_dart.virtual_meter/v3',
+    'schema': 'nectar_sts_dart.virtual_meter/v4',
     'created_at': createdAt.toIso8601String(),
     'identity': identity.toJson(),
     'decoder_key_hex': _bytesToHex(decoderKeyBytes),
     'encryption_algorithm': encryptionAlgorithmName,
     'balance_kwh': balanceKwh,
+    if (balanceWater != 0.0) 'balance_water': balanceWater,
+    if (balanceGas != 0.0) 'balance_gas': balanceGas,
     if (keyExpiryNumber != null) 'key_expiry_number': keyExpiryNumber,
     if (maximumPowerLimit != null) 'maximum_power_limit': maximumPowerLimit,
     if (maximumPhasePowerUnbalanceLimit != null)
@@ -850,7 +918,8 @@ class VirtualMeter {
     if (schema != null &&
         schema != 'nectar_sts_dart.virtual_meter/v1' &&
         schema != 'nectar_sts_dart.virtual_meter/v2' &&
-        schema != 'nectar_sts_dart.virtual_meter/v3') {
+        schema != 'nectar_sts_dart.virtual_meter/v3' &&
+        schema != 'nectar_sts_dart.virtual_meter/v4') {
       throw FormatException('Unsupported meter schema: $schema');
     }
     return VirtualMeter(
@@ -858,6 +927,8 @@ class VirtualMeter {
       decoderKeyBytes: parseHexKey(j['decoder_key_hex'] as String),
       encryptionAlgorithmName: (j['encryption_algorithm'] as String?) ?? 'sta',
       balanceKwh: (j['balance_kwh'] as num).toDouble(),
+      balanceWater: (j['balance_water'] as num?)?.toDouble() ?? 0.0,
+      balanceGas: (j['balance_gas'] as num?)?.toDouble() ?? 0.0,
       appliedTokens: ((j['applied_tokens'] as List?) ?? const [])
           .map((e) => AppliedTokenRecord.fromJson(e as Map<String, dynamic>))
           .toList(),

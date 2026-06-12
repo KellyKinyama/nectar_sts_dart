@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nectar_sts_dart/nectar_sts_dart.dart';
+import 'package:nectar_sts_dart/src/server/api_server.dart';
 import 'package:test/test.dart';
 
 VirtualHsm _hsm() => VirtualHsm(
@@ -141,7 +142,7 @@ void main() {
         // The on-disk JSON is human-inspectable and well-formed.
         final raw = await File(path).readAsString();
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
-        expect(decoded['schema'], 'nectar_sts_dart.virtual_meter/v3');
+        expect(decoded['schema'], 'nectar_sts_dart.virtual_meter/v4');
         expect(decoded['balance_kwh'], closeTo(9.0, 1e-9));
       } finally {
         await dir.delete(recursive: true);
@@ -369,6 +370,170 @@ void main() {
         closeTo(42.0, 1e-9),
       );
       expect(meter.balanceKwh, 0.0);
+    });
+  });
+
+  group('VirtualMeter water/gas commodities', () {
+    String issueCommodityToken({
+      required String subclass,
+      required double amount,
+      required int randomNo,
+      DateTime? tidTime,
+    }) {
+      final params = {
+        VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+        VirtualHsmParams.encryptionAlgorithm: 'sta',
+        VirtualHsmParams.keyType: 2,
+        VirtualHsmParams.supplyGroupCode: '123456',
+        VirtualHsmParams.tariffIndex: '07',
+        VirtualHsmParams.keyRevisionNo: 1,
+        VirtualHsmParams.issuerIdentificationNo: '600727',
+        VirtualHsmParams.decoderReferenceNumber: '12345678901',
+        VirtualHsmParams.tokenClass: '0',
+        VirtualHsmParams.tokenSubclass: subclass,
+        VirtualHsmParams.amount: amount,
+        VirtualHsmParams.tokenId: (tidTime ?? DateTime.utc(2024, 6, 1, 12, 0))
+            .toIso8601String(),
+        VirtualHsmParams.randomNo: randomNo,
+        VirtualHsmParams.baseDate: '1993',
+      };
+      return _hsm().generateToken('issue', params).tokenNo;
+    }
+
+    test('water token credits balanceWater, not balanceKwh', () {
+      final meter = _meter(balance: 10.0);
+      final tok = issueCommodityToken(
+        subclass: '1',
+        amount: 7.0,
+        randomNo: 1,
+      );
+      final r = meter.applyToken(tok);
+      expect(r, isA<ApplyAccepted>());
+      final ok = r as ApplyAccepted;
+      expect(ok.commodity, 'water');
+      expect(ok.amountKwh, closeTo(7.0, 1e-9));
+      expect(ok.newBalanceKwh, closeTo(7.0, 1e-9));
+      expect(meter.balanceWater, closeTo(7.0, 1e-9));
+      expect(meter.balanceGas, 0.0);
+      expect(meter.balanceKwh, closeTo(10.0, 1e-9));
+    });
+
+    test('gas token credits balanceGas, not balanceKwh', () {
+      final meter = _meter(balance: 10.0);
+      final tok = issueCommodityToken(
+        subclass: '2',
+        amount: 3.0,
+        randomNo: 2,
+      );
+      final r = meter.applyToken(tok);
+      expect(r, isA<ApplyAccepted>());
+      final ok = r as ApplyAccepted;
+      expect(ok.commodity, 'gas');
+      expect(meter.balanceGas, closeTo(3.0, 1e-9));
+      expect(meter.balanceWater, 0.0);
+      expect(meter.balanceKwh, closeTo(10.0, 1e-9));
+    });
+
+    test('replay is scoped per commodity (same TID across commodities allowed)', () {
+      final meter = _meter();
+      final t = DateTime.utc(2024, 6, 1, 12, 0);
+      final water = issueCommodityToken(
+        subclass: '1',
+        amount: 1.0,
+        randomNo: 5,
+        tidTime: t,
+      );
+      final gas = issueCommodityToken(
+        subclass: '2',
+        amount: 2.0,
+        randomNo: 6,
+        tidTime: t,
+      );
+      expect(meter.applyToken(water), isA<ApplyAccepted>());
+      expect(meter.applyToken(gas), isA<ApplyAccepted>());
+      // Re-applying the water token must be a replay.
+      expect(meter.applyToken(water), isA<ApplyReplay>());
+      expect(meter.balanceWater, closeTo(1.0, 1e-9));
+      expect(meter.balanceGas, closeTo(2.0, 1e-9));
+    });
+
+    test('balances round-trip through save/load', () async {
+      final dir = await Directory.systemTemp.createTemp('vmeter-comm');
+      try {
+        final path = '${dir.path}\\m.json';
+        final meter = _meter()..filePath = path;
+        meter.applyToken(
+          issueCommodityToken(subclass: '1', amount: 4.0, randomNo: 7),
+        );
+        meter.applyToken(
+          issueCommodityToken(
+            subclass: '2',
+            amount: 6.0,
+            randomNo: 8,
+            tidTime: DateTime.utc(2024, 6, 1, 13, 0),
+          ),
+        );
+        meter.save();
+        final reloaded = VirtualMeter.load(path);
+        expect(reloaded.balanceWater, closeTo(4.0, 1e-9));
+        expect(reloaded.balanceGas, closeTo(6.0, 1e-9));
+        expect(
+          reloaded.appliedTokens.map((r) => r.commodity).toSet(),
+          {'water', 'gas'},
+        );
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    });
+  });
+
+  group('VirtualHsmIssuer convenience methods', () {
+    Map<String, dynamic> meterParams() => {
+      VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+      VirtualHsmParams.encryptionAlgorithm: 'sta',
+      VirtualHsmParams.keyType: 2,
+      VirtualHsmParams.supplyGroupCode: '123456',
+      VirtualHsmParams.tariffIndex: '07',
+      VirtualHsmParams.keyRevisionNo: 1,
+      VirtualHsmParams.issuerIdentificationNo: '600727',
+      VirtualHsmParams.decoderReferenceNumber: '12345678901',
+      VirtualHsmParams.tokenId: DateTime.utc(2024, 6, 1, 12, 0)
+          .toIso8601String(),
+      VirtualHsmParams.randomNo: 1,
+      VirtualHsmParams.baseDate: '1993',
+    };
+
+    test('issueElectricityToken mints a TransferElectricityCreditToken', () {
+      final issuer = VirtualHsmIssuer(_hsm());
+      final tok = issuer.issueElectricityToken(
+        requestId: 'e',
+        amountKwh: 5.0,
+        meterParams: meterParams(),
+      );
+      expect(tok, isA<TransferElectricityCreditToken>());
+      expect(tok.tokenNo, hasLength(20));
+    });
+
+    test('issueWaterToken mints a TransferWaterCreditToken', () {
+      final issuer = VirtualHsmIssuer(_hsm());
+      final tok = issuer.issueWaterToken(
+        requestId: 'w',
+        amount: 5.0,
+        meterParams: meterParams(),
+      );
+      expect(tok, isA<TransferWaterCreditToken>());
+      expect(tok.tokenNo, hasLength(20));
+    });
+
+    test('issueGasToken mints a TransferGasCreditToken', () {
+      final issuer = VirtualHsmIssuer(_hsm());
+      final tok = issuer.issueGasToken(
+        requestId: 'g',
+        amount: 5.0,
+        meterParams: meterParams(),
+      );
+      expect(tok, isA<TransferGasCreditToken>());
+      expect(tok.tokenNo, hasLength(20));
     });
   });
 }

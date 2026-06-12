@@ -556,10 +556,11 @@ void main() {
       expect(resp.statusCode, 400);
     });
 
-    test('out-of-scope class (gas) -> 501 NotImplemented', () async {
+    test('out-of-scope subclass (water meter factor) -> 501 NotImplemented', () async {
       final handler = buildApiHandler(_hsm());
       final params = _baseParams()
-        ..['subclass'] = '2'
+        ..['class'] = '2'
+        ..['subclass'] = '7'
         ..['amount'] = 10.0;
       final r = await _post(handler, '/v1/tokens', params);
       expect(r['status'], 501);

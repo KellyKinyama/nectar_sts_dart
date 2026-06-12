@@ -13,6 +13,8 @@
 ///   - DKGA-02, DKGA-04
 ///   - EA07 (STA), EA09 (DEA, used internally by DKGA-02), EA11 (MISTY1)
 ///   - Class 0 / SubClass 0 — `TransferElectricityCreditToken`
+///   - Class 0 / SubClass 1 — `TransferWaterCreditToken`
+///   - Class 0 / SubClass 2 — `TransferGasCreditToken`
 ///   - Class 1 / SubClass 0 + 1 — `InitiateMeterTestOrDisplay1/2Token`
 ///   - Class 2 / SubClass 0 — `SetMaximumPowerLimitToken`
 ///   - Class 2 / SubClass 1 — `ClearCreditToken`
@@ -26,7 +28,6 @@
 ///
 /// Rejected with [NotImplementedException]:
 ///   - DKGA-01, DKGA-03 (not ported)
-///   - Class 0 SubClass 1 (water), Class 0 SubClass 2 (gas) (not ported)
 ///   - Class 2 / SubClass 7 (`SetWaterMeterFactor`) — water out of scope
 ///   - `type: "prism-thrift"` — use [PrismHsm] instead.
 library;
@@ -129,6 +130,10 @@ extension VirtualHsmDispatch on VirtualHsm {
     switch (dispatch) {
       case '0,0':
         return _generateElectricityCredit(requestID, params, decoderKey, ea);
+      case '0,1':
+        return _generateWaterCredit(requestID, params, decoderKey, ea);
+      case '0,2':
+        return _generateGasCredit(requestID, params, decoderKey, ea);
       case '0,4':
         return _generateElectricityCurrencyCredit(
           requestID,
@@ -140,11 +145,6 @@ extension VirtualHsmDispatch on VirtualHsm {
         return _generateClass1Display1(requestID, params, decoderKey, ea);
       case '1,1':
         return _generateClass1Display2(requestID, params, decoderKey, ea);
-      case '0,1':
-      case '0,2':
-        throw NotImplementedException(
-          'Class 0 SubClass $sub (water / gas) tokens are not ported',
-        );
       case '2,0':
         return _generateClass2SetMaximumPowerLimit(
           requestID,
@@ -346,6 +346,40 @@ extension VirtualHsmDispatch on VirtualHsm {
       )
       ..randomNo = _randomFromParams(params);
     TransferElectricityCreditTokenGenerator(decoderKey, ea).generate(token);
+    return token;
+  }
+
+  TransferWaterCreditToken _generateWaterCredit(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final token = TransferWaterCreditToken(requestID)
+      ..amountPurchased = Amount(_doubleParam(params, VirtualHsmParams.amount))
+      ..tokenIdentifier = TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      )
+      ..randomNo = _randomFromParams(params);
+    TransferWaterCreditTokenGenerator(decoderKey, ea).generate(token);
+    return token;
+  }
+
+  TransferGasCreditToken _generateGasCredit(
+    String requestID,
+    Map<String, dynamic> params,
+    DecoderKey decoderKey,
+    EncryptionAlgorithm ea,
+  ) {
+    final token = TransferGasCreditToken(requestID)
+      ..amountPurchased = Amount(_doubleParam(params, VirtualHsmParams.amount))
+      ..tokenIdentifier = TokenIdentifier(
+        _baseDate(params),
+        timeOfIssue: _dateTimeParam(params, VirtualHsmParams.tokenId),
+      )
+      ..randomNo = _randomFromParams(params);
+    TransferGasCreditTokenGenerator(decoderKey, ea).generate(token);
     return token;
   }
 

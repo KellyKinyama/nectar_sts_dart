@@ -450,30 +450,28 @@ void main() {
       expect(tok2.tokenNo, hasLength(20));
     });
 
-    test('Class 0/1 (water) is rejected as not-ported', () {
+    test('Class 0/1 (water) issues a TransferWaterCreditToken', () {
       final hsm = _hsm();
-      expect(
-        () => hsm.generateToken('w', {
-          ...dkga02Native(),
-          VirtualHsmParams.tokenClass: '0',
-          VirtualHsmParams.tokenSubclass: '1',
-          VirtualHsmParams.amount: 1.0,
-        }),
-        throwsA(isA<NotImplementedException>()),
-      );
+      final tok = hsm.generateToken('w', {
+        ...dkga02Native(),
+        VirtualHsmParams.tokenClass: '0',
+        VirtualHsmParams.tokenSubclass: '1',
+        VirtualHsmParams.amount: 1.0,
+      });
+      expect(tok, isA<TransferWaterCreditToken>());
+      expect(tok.tokenNo, hasLength(20));
     });
 
-    test('Class 0/2 (gas) is rejected as not-ported', () {
+    test('Class 0/2 (gas) issues a TransferGasCreditToken', () {
       final hsm = _hsm();
-      expect(
-        () => hsm.generateToken('g', {
-          ...dkga02Native(),
-          VirtualHsmParams.tokenClass: '0',
-          VirtualHsmParams.tokenSubclass: '2',
-          VirtualHsmParams.amount: 1.0,
-        }),
-        throwsA(isA<NotImplementedException>()),
-      );
+      final tok = hsm.generateToken('g', {
+        ...dkga02Native(),
+        VirtualHsmParams.tokenClass: '0',
+        VirtualHsmParams.tokenSubclass: '2',
+        VirtualHsmParams.amount: 1.0,
+      });
+      expect(tok, isA<TransferGasCreditToken>());
+      expect(tok.tokenNo, hasLength(20));
     });
 
     test('unknown class/subclass is rejected with InvalidTokenException', () {
