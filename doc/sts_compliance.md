@@ -143,7 +143,7 @@ equivalent `DateTime.utc(...)`; this is consistent with
 
 ## Running the tests
 
-Full regression suite (all 227 tests):
+Full regression suite (431 passing + 10 skipped):
 
 ```powershell
 dart test

@@ -91,7 +91,8 @@ Beyond the conformance vectors, the suite covers:
 | [test/dkga04_misty1_test.dart](../test/dkga04_misty1_test.dart)                 | DKGA-04 derives a 16-byte key for MISTY1 + full EA11 round-trip on the derived key.         |
 | [test/encryption_test.dart](../test/encryption_test.dart)                       | EA07 / EA09 round-trip and `Key.getKeyBit` LSB-first semantics.                             |
 | [test/misty1_test.dart](../test/misty1_test.dart)                               | MISTY1 (EA11) round-trip + RFC 2994 Appendix A.1 reference vectors + 100-iter LCG fuzz.     |
-| [test/base_layer_test.dart](../test/base_layer_test.dart)                       | `BitString`, `Nibble`, byte-array helpers.                                                  |
+| [test/base_layer_test.dart](../test/base_layer_test.dart)                       | `BitString`, `Nibble`, CRC-16/IBM, Luhn check digit, `TokenIdentifier`, amount-encoding helpers. |
+| [test/meter_pan_parser_test.dart](../test/meter_pan_parser_test.dart)           | `MeterPrimaryAccountNumber.fromString` legacy / generic prefix parsing + validation modes.  |
 | [test/token_round_trip_test.dart](../test/token_round_trip_test.dart)           | Generator → 20-digit display → decoder preserves Amount + TID across many random inputs.    |
 | [test/class1_and_dispatcher_test.dart](../test/class1_and_dispatcher_test.dart) | Class 1 InitiateMeterTestOrDisplay (both sub-classes) round-trip; multi-class dispatch.     |
 | [test/class2_register_tokens_test.dart](../test/class2_register_tokens_test.dart) | Class 2 register family generator/decoder coverage.                                       |
@@ -99,12 +100,20 @@ Beyond the conformance vectors, the suite covers:
 | [test/class2_kct_misty1_test.dart](../test/class2_kct_misty1_test.dart)         | Class 2 3rd/4th Section MISTY1 KCT generator ↔ decoder and 4-section 128-bit key rebuild.   |
 | [test/sts_compliance_class2_test.dart](../test/sts_compliance_class2_test.dart) | DKGA-02 + STA CTSA02/03/04/05/06/07/09/12/13/14, CTSA25, Nectar_1 bit-exact vectors.        |
 | [test/sts_compliance_class2_misty1_test.dart](../test/sts_compliance_class2_misty1_test.dart) | DKGA-04 + MISTY1 CTSA01/03/05/06/07/09/12/13/14 bit-exact vectors.            |
-| [test/virtual_meter_test.dart](../test/virtual_meter_test.dart)                 | Apply → balance update, replay detection, 1st+2nd KCT staging + STA key rotation, save/load.|
+| [test/virtual_meter_test.dart](../test/virtual_meter_test.dart)                 | Apply → balance update, replay detection, 1st+2nd STA KCT + 4-section MISTY1 KCT rotation, tamper latch, save/load. |
 | [test/virtual_hsm_dispatch_test.dart](../test/virtual_hsm_dispatch_test.dart)   | Param-map API matches the upstream Java `tokens-service` contract.                          |
-| [test/api_server_test.dart](../test/api_server_test.dart)                       | HTTP MVP — `POST /v1/tokens` + `POST /v1/tokens/{tokenNo}` with bearer-token auth.          |
+| [test/api_server_test.dart](../test/api_server_test.dart)                       | HTTP — `/v1/tokens`, `/v1/tokens/key-change`, `/v1/tokens/meter-test`, `/v1/meters`, tariff pricing, bearer auth, `X-Request-Id` propagation, vending-log persistence. |
+| [test/openapi_spec_test.dart](../test/openapi_spec_test.dart)                   | `GET /openapi.json` is a well-formed OpenAPI 3.0 doc and reachable without bearer auth.     |
+| [test/tariff_test.dart](../test/tariff_test.dart)                               | `Tariff.moneyFor` / `kwhFor` inverses, admin-fee math, currency mismatches.                 |
+| [test/token_issuer_test.dart](../test/token_issuer_test.dart)                   | `PrismConfig` plumbing on `PrismIssuer` (no network calls).                                 |
+| [test/db_store_test.dart](../test/db_store_test.dart)                           | MySQL-backed `DbMeterRegistry` + `DbVendingLog` integration (skipped unless `STS_DB_HOST` is set). |
+| [test/prism/thrift_protocol_test.dart](../test/prism/thrift_protocol_test.dart) | Pure encoder/decoder round-trips for the hand-rolled Thrift binary protocol + framed transport. |
+| [test/prism/token_api_client_test.dart](../test/prism/token_api_client_test.dart) | `TokenApiClient` end-to-end against an in-process fake Thrift server (signIn + issueCreditToken + exception paths). |
+| [test/prism/prism_issuer_test.dart](../test/prism/prism_issuer_test.dart)       | `PrismIssuer.generateToken` mapping back into `TransferElectricityCreditToken`.             |
 
-Total: **227 tests**, all passing on Dart SDK ≥ 3.4 on
-Windows/macOS/Linux.
+Total: **431 tests passing** (plus **10 skipped** — the MySQL
+integration suite and a handful of env-gated cases), all green on
+Dart SDK ≥ 3.4 on Windows/macOS/Linux.
 
 ```powershell
 # from c:\www\dart\nectar_sts_dart
@@ -124,25 +133,24 @@ roughly in order of effort:
    pass. The Class 0 decoder dispatch also needs to look at the
    sub-class nibble after CRC verification.
 
-2. **HSM dispatch for Class 2 / SubClass 8 + 9** (MISTY1 KCT 3rd/4th
-   sections). The token classes, generators and decoder are in
-   place and exercised by CTSA05_04 directly; what's still missing
-   is the `VirtualHsm.generateToken('2,8' / '2,9', ...)` wiring and
-   the `VirtualMeter` side that buffers all four pending halves and
-   rotates to the new 128-bit MISTY1 key when the full set has
-   arrived (mirroring the STA 1st/2nd-section staging that's already
-   in place).
-
-3. **Transcribe CTSA10_04 and CTSA11 Class 1 vectors.** The Class 1
+2. **Transcribe CTSA10_04 and CTSA11 Class 1 vectors.** The Class 1
    path is now correct (CTSA02 passes bit-exactly); the remaining
    work is just transcribing the extended Java vector tables.
 
-4. **Real HSM transport.** Today `PrismHsm` is a stub. Wiring it
-   to a real Prism HSM (or Thales / Utimaco equivalent) over
-   Thrift is mostly RPC glue, but is what would make the port
-   usable as a production vending backend.
+3. **Finish the Prism HSM path.** The hand-rolled Thrift binary
+   protocol + framed transport, `TokenApiClient`, and the
+   `PrismIssuer` glue layer are in place and exercised end-to-end
+   against an in-process fake server
+   ([test/prism/](../test/prism/)). What's still missing is the
+   typed `Hsm`-interface wrapper — i.e. making the existing
+   [`PrismHsm`](../lib/src/hsm/hsm.dart) stub actually call into
+   `TokenApiClient` for `deriveDecoderKeyDkga02` /
+   `deriveDecoderKeyDkga04` — plus the rest of the Prism
+   management RPCs (sign-in lifecycle, key-rotation, audit). Today
+   production setups should drive the Prism path via `PrismIssuer`
+   on the HTTP server.
 
-5. **Meter state hardening.** The virtual meter uses a naive
+4. **Meter state hardening.** The virtual meter uses a naive
    `Set<int>` of applied TIDs. Real meters track a sliding window
    with explicit "min/max accepted minute" and a small bitmap;
    this is the easiest place to harden if you want to use the

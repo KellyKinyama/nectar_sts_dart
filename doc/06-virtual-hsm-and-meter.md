@@ -25,9 +25,17 @@ Both have software-only stand-ins in this port:
 
 `Hsm` is a small interface — `generateToken`, `decodeToken`,
 `describe` — that hides where the keys actually live. Real
-deployments use a tamper-resistant Prism HSM via Thrift RPC; this
-port ships [`PrismHsm`](../lib/src/hsm/hsm.dart) as a documented
-stub that always throws `NotImplementedException`.
+deployments use a tamper-resistant Prism HSM via Thrift RPC. This
+port ships two pieces in that direction: a hand-rolled
+[Thrift binary protocol + framed transport + `TokenApiClient`](../lib/src/prism/)
+(exercised end-to-end against an in-process fake server in
+[test/prism/](../test/prism/)) and a `PrismIssuer` glue layer in
+[`lib/src/server/token_issuer.dart`](../lib/src/server/token_issuer.dart)
+that plugs that client into the HTTP server. The typed
+[`PrismHsm`](../lib/src/hsm/hsm.dart) implementation of the `Hsm`
+interface itself is still a stub — i.e. the key-derivation methods
+throw `NotImplementedException`. Production setups should drive the
+Prism path via `PrismIssuer` until the typed wrapper lands.
 
 [`VirtualHsm`](../lib/src/hsm/hsm.dart) is the software equivalent:
 keys live in process memory, and every operation just calls into
@@ -46,29 +54,28 @@ Supported via this layer:
 - DKGA-02, DKGA-04
 - EA07 (STA), EA09 (DEA, internal to DKGA-02), EA11 (MISTY1)
 - Class 0 / SubClass 0 — `TransferElectricityCreditToken`
+- Class 0 / SubClass 4 — `ElectricityCurrencyCreditToken`
 - Class 1 / SubClass 0 + 1 — `InitiateMeterTestOrDisplay1/2Token`
 - Class 2 register family — `SetMaximumPowerLimit` (2/0),
   `ClearCredit` (2/1), `SetTariffRate` (2/2),
   `ClearTamperCondition` (2/5),
   `SetMaximumPhasePowerUnbalanceLimit` (2/6)
 - Class 2 / SubClass 3 + 4 — `Set1stSection` / `Set2ndSectionDecoderKeyToken`
-  (64-bit STA decoder-key rotation pair). Either side of the pair
-  can also be generated under MISTY1 (the new-key splitter switches
-  on the EA), but the meter currently only knows how to combine the
-  STA halves.
+  (64-bit STA decoder-key rotation pair).
+- Class 2 / SubClass 8 + 9 — `Set3rdSection` / `Set4thSectionDecoderKeyToken`
+  (128-bit MISTY1 decoder-key rotation, completes the 4-section
+  set). The dispatch routes both subclasses; the new-key splitter
+  switches on the EA. The virtual meter buffers all four halves
+  and rotates to the new 128-bit MISTY1 key once the complete set
+  has arrived.
 
 Cleanly rejected with `NotImplementedException`:
 
 - DKGA-01, DKGA-03
 - Class 0 SubClass 1 (water), Class 0 SubClass 2 (gas)
 - Class 2 / SubClass 7 — `SetWaterMeterFactor` (water only)
-- Class 2 / SubClass 8 + 9 — `Set3rdSection` / `Set4thSectionDecoderKeyToken`
-  (MISTY1 128-bit key-rotation path). The token classes, generators
-  and decoder _are_ implemented and exported — see
-  `Set3rdSectionDecoderKeyTokenGenerator` /
-  `Set4thSectionDecoderKeyTokenGenerator` — but the param-map
-  dispatch isn't wired yet (pending 4-section meter rotation).
-- `type: "prism-thrift"` — use `PrismHsm` instead.
+- `type: "prism-thrift"` against `VirtualHsm` — wire up
+  `PrismIssuer` (or, eventually, a real `PrismHsm`) instead.
 
 ## The VirtualMeter
 
