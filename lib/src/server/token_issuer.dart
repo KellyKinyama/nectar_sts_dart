@@ -768,7 +768,8 @@ class PrismIssuer implements TokenIssuer {
   ) async {
     final tokenClass = params[VirtualHsmParams.tokenClass]?.toString();
     final subclass = params[VirtualHsmParams.tokenSubclass]?.toString() ?? '0';
-    if (tokenClass != '0' || (subclass != '0' && subclass != '1' && subclass != '2')) {
+    if (tokenClass != '0' ||
+        (subclass != '0' && subclass != '1' && subclass != '2')) {
       throw NotImplementedException(
         'PrismIssuer.generateToken: only class 0 / subclass 0..2 '
         '(electricity / water / gas credit) are wired through to Prism today. '
@@ -811,7 +812,8 @@ class PrismIssuer implements TokenIssuer {
   ) async {
     final tokenClass = params[VirtualHsmParams.tokenClass]?.toString();
     final subclass = params[VirtualHsmParams.tokenSubclass]?.toString() ?? '0';
-    if (tokenClass != '0' || (subclass != '0' && subclass != '1' && subclass != '2')) {
+    if (tokenClass != '0' ||
+        (subclass != '0' && subclass != '1' && subclass != '2')) {
       throw NotImplementedException(
         'PrismIssuer.decodeToken: only class 0 / subclass 0..2 '
         '(electricity / water / gas credit) are wired through to Prism today. '

@@ -14,18 +14,12 @@ class TransferWaterCreditDecoder {
 
   TransferWaterCreditDecoder(this.decoderKey, this.encryptionAlgorithm);
 
-  TransferWaterCreditToken decodeDecimal(
-    String requestID,
-    String decimal20,
-  ) {
+  TransferWaterCreditToken decodeDecimal(String requestID, String decimal20) {
     final binary66 = TokenTransposition.tokenNoToBinary66(decimal20);
     return decodeBinary66(requestID, binary66);
   }
 
-  TransferWaterCreditToken decodeBinary66(
-    String requestID,
-    String binary66,
-  ) {
+  TransferWaterCreditToken decodeBinary66(String requestID, String binary66) {
     final r = TokenTransposition.untransposeFromBinary66(binary66);
     if (r.tokenClass.bitString.value != 0) {
       throw const TokenError(

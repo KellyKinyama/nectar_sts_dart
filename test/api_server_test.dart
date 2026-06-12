@@ -556,19 +556,22 @@ void main() {
       expect(resp.statusCode, 400);
     });
 
-    test('out-of-scope subclass (water meter factor) -> 501 NotImplemented', () async {
-      final handler = buildApiHandler(_hsm());
-      final params = _baseParams()
-        ..['class'] = '2'
-        ..['subclass'] = '7'
-        ..['amount'] = 10.0;
-      final r = await _post(handler, '/v1/tokens', params);
-      expect(r['status'], 501);
-      expect(
-        ((r['body'] as Map)['status'] as Map)['message'].toString(),
-        contains('not ported'),
-      );
-    });
+    test(
+      'out-of-scope subclass (water meter factor) -> 501 NotImplemented',
+      () async {
+        final handler = buildApiHandler(_hsm());
+        final params = _baseParams()
+          ..['class'] = '2'
+          ..['subclass'] = '7'
+          ..['amount'] = 10.0;
+        final r = await _post(handler, '/v1/tokens', params);
+        expect(r['status'], 501);
+        expect(
+          ((r['body'] as Map)['status'] as Map)['message'].toString(),
+          contains('not ported'),
+        );
+      },
+    );
 
     test('bearer-token auth rejects requests without the header', () async {
       final handler = buildApiHandler(_hsm(), bearerToken: 's3cret');

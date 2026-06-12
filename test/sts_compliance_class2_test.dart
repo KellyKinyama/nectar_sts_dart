@@ -1,23 +1,27 @@
 // STS compliance test vectors ported from NectarAPI/tokens-service:
 //   src/test/java/ke/co/nectar/token/domain/token/
 //     STSComplianceTests_STS_531_1_0_02_CTSA0{1,3,4,5,6,7,9,12,13,14}.java
+//     STSComplianceTests_STS_531_1_0_02_CTSA10.java (elec/water/gas sweep)
+//     STSComplianceTests_STS_531_1_0_02_CTSA21.java (TransferWaterCredit)
+//     STSComplianceTests_STS_531_1_0_02_CTSA22.java (TransferGasCredit)
 //     STSComplianceTests_STS_531_1_0_02_CTSA25.java
 //     STSComplianceTests_Nectar_1.java (vendor extension Amount sweep)
 //
 // SCOPE:
-//   - STA (EA07) Class 0 TransferElectricityCredit and Class 2
-//     management tokens / Key Change Tokens (1st/2nd section).
-//   - DKGA-02 derived key for CTSA01/03/04/05/06/07/09/12/13/14 and
-//     Nectar_1.
+//   - STA (EA07) Class 0 TransferElectricityCredit /
+//     TransferWaterCredit / TransferGasCredit (SubClass 0/1/2) and
+//     Class 2 management tokens / Key Change Tokens (1st/2nd section).
+//   - DKGA-02 derived key for CTSA01/03/04/05/06/07/09/10/12/13/14/
+//     21/22 and Nectar_1.
 //   - DKGA-04 derived key for CTSA25 (DKGA-04 + STA combo: 20-byte
-//     vending key, SGC='123457', baseDate sweep 1993/2014/2035).
+//     vending key, SGC='123457', baseDate sweep 1993/2014/2035) —
+//     elec, water and gas vectors all ported.
 //
 //   - Standard DKGA-02 CTSA setup: vudk=hex 'abababababababab',
 //     SGC='123456', TI='01', KRN=1, KT=2, KEN=255,
 //     PAN='600727000000000009' unless noted.
 //
 //   - Skipped vectors are documented inline:
-//       * CTSA01/CTSA25 water/gas steps: electricity-only port.
 //       * CTSA09 step3 multi-minute series: relies on a vending-side
 //         TID rolling counter that the Dart port leaves to callers.
 //         The three time-shifted re-issues are exercised as
@@ -583,9 +587,9 @@ void main() {
   });
 
   group('STS_531_1_0_02 CTSA01 (TransferElectricityCredit, STA)', () {
-    // Class 0 electricity credit tokens under DKGA-02 + STA. Water/gas
-    // steps (3/4/5/6) intentionally skipped per the Class 0 SubClass
-    // scope.
+    // Class 0 electricity credit tokens under DKGA-02 + STA. The
+    // matching water/gas vectors (CTSA01 steps 3..6) are covered in
+    // sts_compliance_test.dart.
     test('step1: PAN 600727000000000009, 01/03/2004 13:55:00, 0.1 kWh → '
         '23716100501183194197', () {
       final dk = defaultDecoderKey();
@@ -619,8 +623,9 @@ void main() {
 
   group('STS_531_1_0_02 CTSA25 (TransferElectricityCredit, DKGA-04 + STA)', () {
     // DKGA-04 key derivation but STA encryption. 20-byte vending key,
-    // SGC=123457. Electricity-only steps (1/5/9); water/gas steps
-    // skipped.
+    // SGC=123457. Three baseDate epochs (1993 / 2014 / 2035) each
+    // exercised with electricity (1/5/9), water (2/6/10) and gas
+    // (3/7/11) credit tokens.
     final vudk04 = VendingUniqueDesKey(
       _hex('abababababababab949494949494949401234567'),
     );
@@ -656,6 +661,28 @@ void main() {
       expect(token.tokenNo, equals('15697331168573253829'));
     });
 
+    test('step2 (water): baseDate=1993, KRN=1, 01/01/2009 08:05:00, 0.1 → '
+        '56727749990719585416', () {
+      final dk = dkga04(baseDate: BaseDate.date1993, krn: KeyRevisionNumber(1));
+      final token = TransferWaterCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = _tid(DateTime.utc(2009, 1, 1, 8, 5, 0))
+        ..randomNo = _rnd5;
+      TransferWaterCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('56727749990719585416'));
+    });
+
+    test('step3 (gas): baseDate=1993, KRN=1, 01/01/2009 08:10:00, 0.1 → '
+        '25938479605175185937', () {
+      final dk = dkga04(baseDate: BaseDate.date1993, krn: KeyRevisionNumber(1));
+      final token = TransferGasCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = _tid(DateTime.utc(2009, 1, 1, 8, 10, 0))
+        ..randomNo = _rnd5;
+      TransferGasCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('25938479605175185937'));
+    });
+
     test('step5: baseDate=2014, KRN=4, 01/01/2014 08:00:00, 0.1 kWh → '
         '20324881626382980759', () {
       final dk = dkga04(baseDate: BaseDate.date2014, krn: KeyRevisionNumber(4));
@@ -670,6 +697,34 @@ void main() {
       expect(token.tokenNo, equals('20324881626382980759'));
     });
 
+    test('step6 (water): baseDate=2014, KRN=4, 01/01/2014 08:05:00, 0.1 → '
+        '09907513011694393160', () {
+      final dk = dkga04(baseDate: BaseDate.date2014, krn: KeyRevisionNumber(4));
+      final token = TransferWaterCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = TokenIdentifier(
+          BaseDate.date2014,
+          timeOfIssue: DateTime.utc(2014, 1, 1, 8, 5, 0),
+        )
+        ..randomNo = _rnd5;
+      TransferWaterCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('09907513011694393160'));
+    });
+
+    test('step7 (gas): baseDate=2014, KRN=4, 01/01/2014 08:10:00, 0.1 → '
+        '50054427724775110925', () {
+      final dk = dkga04(baseDate: BaseDate.date2014, krn: KeyRevisionNumber(4));
+      final token = TransferGasCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = TokenIdentifier(
+          BaseDate.date2014,
+          timeOfIssue: DateTime.utc(2014, 1, 1, 8, 10, 0),
+        )
+        ..randomNo = _rnd5;
+      TransferGasCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('50054427724775110925'));
+    });
+
     test('step9: baseDate=2035, KRN=5, 01/01/2035 08:00:00, 0.1 kWh → '
         '09239624803025986815', () {
       final dk = dkga04(baseDate: BaseDate.date2035, krn: KeyRevisionNumber(5));
@@ -682,6 +737,34 @@ void main() {
         ..randomNo = _rnd5;
       TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
       expect(token.tokenNo, equals('09239624803025986815'));
+    });
+
+    test('step10 (water): baseDate=2035, KRN=5, 01/01/2035 08:05:00, 0.1 → '
+        '31176414469542247929', () {
+      final dk = dkga04(baseDate: BaseDate.date2035, krn: KeyRevisionNumber(5));
+      final token = TransferWaterCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = TokenIdentifier(
+          BaseDate.date2035,
+          timeOfIssue: DateTime.utc(2035, 1, 1, 8, 5, 0),
+        )
+        ..randomNo = _rnd5;
+      TransferWaterCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('31176414469542247929'));
+    });
+
+    test('step11 (gas): baseDate=2035, KRN=5, 01/01/2035 08:10:00, 0.1 → '
+        '13512126869939531125', () {
+      final dk = dkga04(baseDate: BaseDate.date2035, krn: KeyRevisionNumber(5));
+      final token = TransferGasCreditToken('request_id')
+        ..amountPurchased = Amount(0.1)
+        ..tokenIdentifier = TokenIdentifier(
+          BaseDate.date2035,
+          timeOfIssue: DateTime.utc(2035, 1, 1, 8, 10, 0),
+        )
+        ..randomNo = _rnd5;
+      TransferGasCreditTokenGenerator(dk, ea07).generate(token);
+      expect(token.tokenNo, equals('13512126869939531125'));
     });
   });
 
@@ -840,8 +923,9 @@ void main() {
   // the Java side but Dart's Class 0 generator does not mix KEN into
   // the data block (only Class 2 key-change tokens consume it), so the
   // vectors are byte-identical to a defaultDecoderKey + amount-sweep.
-  // Water/gas steps in the Java suite are skipped per the Class 0
-  // SubClass 0 scope.
+  // Water (steps 10..18) and gas (steps 19..27) are ported below — same
+  // (date, amount) tuples as electricity, only the SubClass nibble
+  // changes in the wire format.
   group('STS_531_1_0_02 CTSA10 (TransferElectricityCredit amount sweep)', () {
     String genTec(DateTime issuedAt, double amount) {
       final dk = defaultDecoderKey();
@@ -850,6 +934,26 @@ void main() {
         ..tokenIdentifier = _tid(issuedAt)
         ..randomNo = _rnd5;
       TransferElectricityCreditTokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    String genTwc(DateTime issuedAt, double amount) {
+      final dk = defaultDecoderKey();
+      final token = TransferWaterCreditToken('request_id')
+        ..amountPurchased = Amount(amount)
+        ..tokenIdentifier = _tid(issuedAt)
+        ..randomNo = _rnd5;
+      TransferWaterCreditTokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    String genTgc(DateTime issuedAt, double amount) {
+      final dk = defaultDecoderKey();
+      final token = TransferGasCreditToken('request_id')
+        ..amountPurchased = Amount(amount)
+        ..tokenIdentifier = _tid(issuedAt)
+        ..randomNo = _rnd5;
+      TransferGasCreditTokenGenerator(dk, ea07).generate(token);
       return token.tokenNo;
     }
 
@@ -905,6 +1009,139 @@ void main() {
       expect(
         genTec(DateTime.utc(2004, 4, 1, 1, 54, 0), 1820162.4),
         equals('42222423067848970276'),
+      );
+    });
+
+    // ---------------- water (SubClass 1), steps 10..18 ----------------
+    test('step10 (water): 01/04/2004 00:30:00, 25.6 → 44275716003808438853',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 0, 30, 0), 25.6),
+        equals('44275716003808438853'),
+      );
+    });
+    test('step11 (water): 01/04/2004 00:35:00, 1638.3 → 18252763951429538816',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 0, 35, 0), 1638.3),
+        equals('18252763951429538816'),
+      );
+    });
+    test('step12 (water): 01/04/2004 00:40:00, 1638.4 → 27315011099256270180',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 0, 40, 0), 1638.4),
+        equals('27315011099256270180'),
+      );
+    });
+    test('step13 (water): 01/04/2004 00:45:00, 2000.0 → 63822263014624002901',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 0, 45, 0), 2000.0),
+        equals('63822263014624002901'),
+      );
+    });
+    test('step14 (water): 01/04/2004 00:50:00, 18022.3 → 09641054211308025667',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 0, 50, 0), 18022.3),
+        equals('09641054211308025667'),
+      );
+    });
+    test('step15 (water): 01/04/2004 00:55:00, 18022.4 → 44446096428101342168',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 0, 55, 0), 18022.4),
+        equals('44446096428101342168'),
+      );
+    });
+    test(
+        'step16 (water): 01/04/2004 01:44:00, 181862.3 → 28708466031297612806',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 1, 44, 0), 181862.3),
+        equals('28708466031297612806'),
+      );
+    });
+    test(
+        'step17 (water): 01/04/2004 01:49:00, 181862.4 → 10341114843091227763',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 1, 49, 0), 181862.4),
+        equals('10341114843091227763'),
+      );
+    });
+    test(
+        'step18 (water): 01/04/2004 01:54:00, 1820162.4 → 05942777944950076038',
+        () {
+      expect(
+        genTwc(DateTime.utc(2004, 4, 1, 1, 54, 0), 1820162.4),
+        equals('05942777944950076038'),
+      );
+    });
+
+    // ---------------- gas (SubClass 2), steps 19..27 ----------------
+    test('step19 (gas): 01/04/2004 00:30:00, 25.6 → 55421978213496083894', () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 0, 30, 0), 25.6),
+        equals('55421978213496083894'),
+      );
+    });
+    test('step20 (gas): 01/04/2004 00:35:00, 1638.3 → 19542256788533803049',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 0, 35, 0), 1638.3),
+        equals('19542256788533803049'),
+      );
+    });
+    test('step21 (gas): 01/04/2004 00:40:00, 1638.4 → 00240351248989131846',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 0, 40, 0), 1638.4),
+        equals('00240351248989131846'),
+      );
+    });
+    test('step22 (gas): 01/04/2004 00:45:00, 2000.0 → 09767096307961035977',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 0, 45, 0), 2000.0),
+        equals('09767096307961035977'),
+      );
+    });
+    test('step23 (gas): 01/04/2004 00:50:00, 18022.3 → 48113663060937699726',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 0, 50, 0), 18022.3),
+        equals('48113663060937699726'),
+      );
+    });
+    test('step24 (gas): 01/04/2004 00:55:00, 18022.4 → 03981404420542897416',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 0, 55, 0), 18022.4),
+        equals('03981404420542897416'),
+      );
+    });
+    test('step25 (gas): 01/04/2004 01:44:00, 181862.3 → 14196243940519813244',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 1, 44, 0), 181862.3),
+        equals('14196243940519813244'),
+      );
+    });
+    test('step26 (gas): 01/04/2004 01:49:00, 181862.4 → 49902394914324621132',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 1, 49, 0), 181862.4),
+        equals('49902394914324621132'),
+      );
+    });
+    test(
+        'step27 (gas): 01/04/2004 01:54:00, 1820162.4 → 13610552847224033160',
+        () {
+      expect(
+        genTgc(DateTime.utc(2004, 4, 1, 1, 54, 0), 1820162.4),
+        equals('13610552847224033160'),
       );
     });
   });
@@ -1227,22 +1464,161 @@ void main() {
     });
   });
 
-  // CTSA21 (water credit) and CTSA22 (gas credit) are not portable:
-  // the Dart implementation only ships the Class 0 electricity-credit
-  // path. Water/gas TransferCreditToken generators are intentionally
-  // out of scope (the VirtualHsm dispatcher already rejects subclass
-  // 1 and 2 — see virtual_hsm_dispatch_test.dart). Documented here
-  // for parity-suite completeness.
-  group('STS_531_1_0_02 CTSA21/CTSA22 (water/gas Class 0)', () {
-    test(
-      'parity-skip: water/gas Class 0 not ported in Dart',
-      () {
-        // No-op marker — the rejection path is asserted in
-        // virtual_hsm_dispatch_test.dart.
-        expect(true, isTrue);
-      },
-      skip: 'Class 0 subclass 1 (water) / 2 (gas) intentionally out of scope.',
-    );
+  // CTSA21 (water credit) and CTSA22 (gas credit) — full vector
+  // ports below. Class 0 SubClass 1 and 2 are dispatched through the
+  // VirtualHsm and exercised by virtual_hsm_dispatch_test.dart and
+  // the apply path in virtual_meter_test.dart.
+  group('STS_531_1_0_02 CTSA21 (TransferWaterCredit Class 0 SubClass 1)', () {
+    // Java upstream: STSComplianceTests_STS_531_1_0_02_CTSA21
+    // PAN=600727000000000009, SGC=123456, TI=01, KRN=1, KT=2, KEN=255
+    // vudk=hex 'abababababababab', RND=5, BaseDate=1993, STA encryption.
+    // 15 amount-and-date vectors.
+    String gen(DateTime issuedAt, num amount) {
+      final dk = defaultDecoderKey();
+      final token = TransferWaterCreditToken('request_id')
+        ..amountPurchased = Amount(amount.toDouble())
+        ..tokenIdentifier = _tid(issuedAt)
+        ..randomNo = _rnd5;
+      TransferWaterCreditTokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    test('step1: 23/05/2005 10:01:00, 1 → 15415954497866603070', () {
+      expect(gen(DateTime.utc(2005, 5, 23, 10, 1, 0), 1),
+          equals('15415954497866603070'));
+    });
+    test('step2: 24/05/2005 10:02:00, 16383 → 37577557589608193918', () {
+      expect(gen(DateTime.utc(2005, 5, 24, 10, 2, 0), 16383),
+          equals('37577557589608193918'));
+    });
+    test('step3: 23/04/2006 23:10:03, 16384 → 64605231735471529556', () {
+      expect(gen(DateTime.utc(2006, 4, 23, 23, 10, 3), 16384),
+          equals('64605231735471529556'));
+    });
+    test('step4: 24/04/2006 10:04:00, 180224 → 61396462165248534316', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 10, 4, 0), 180224),
+          equals('61396462165248534316'));
+    });
+    test('step5: 24/04/2006 11:00:00, 1818624 → 27442853458265256809', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 11, 0, 0), 1818624),
+          equals('27442853458265256809'));
+    });
+    test('step6: 24/04/2006 11:01:00, 182262 → 60366325560961667086', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 11, 1, 0), 182262),
+          equals('60366325560961667086'));
+    });
+    test('step7: 24/04/2006 11:02:00, 182264 → 49837510367703553651', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 11, 2, 0), 182264),
+          equals('49837510367703553651'));
+    });
+    test('step8: 24/04/2006 11:03:00, 182024 → 65892074689465900210', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 11, 3, 0), 182024),
+          equals('65892074689465900210'));
+    });
+    test('step9: 24/04/2006 11:04:00, 182.5 → 31056801750423680816', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 11, 4, 0), 182.5),
+          equals('31056801750423680816'));
+    });
+    test('step10: 24/04/2006 11:05:00, 1673.8 → 20363556736975891316', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 11, 5, 0), 1673.8),
+          equals('20363556736975891316'));
+    });
+    test('step11: 24/04/2006 20:10:00, 0 → 16838670950350007721', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 20, 10, 0), 0),
+          equals('16838670950350007721'));
+    });
+    test('step12: 24/04/2006 11:00:00, 17654.3 → 20884251612329507769', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 11, 0, 0), 17654.3),
+          equals('20884251612329507769'));
+    });
+    test('step13: 24/04/2006 20:12:00, 123 → 29433837651179279051', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 20, 12, 0), 123),
+          equals('29433837651179279051'));
+    });
+    test('step14: 24/04/2006 20:14:00, 180224 → 56221045810819914754', () {
+      expect(gen(DateTime.utc(2006, 4, 24, 20, 14, 0), 180224),
+          equals('56221045810819914754'));
+    });
+    test('step15: 12/05/2006 20:15:00, 15671.4 → 07426208391727345260', () {
+      expect(gen(DateTime.utc(2006, 5, 12, 20, 15, 0), 15671.4),
+          equals('07426208391727345260'));
+    });
+  });
+
+  group('STS_531_1_0_02 CTSA22 (TransferGasCredit Class 0 SubClass 2)', () {
+    // Java upstream: STSComplianceTests_STS_531_1_0_02_CTSA22
+    // Same identity/key setup as CTSA21; 15 amount-and-date vectors
+    // (different dates + amounts).
+    String gen(DateTime issuedAt, num amount) {
+      final dk = defaultDecoderKey();
+      final token = TransferGasCreditToken('request_id')
+        ..amountPurchased = Amount(amount.toDouble())
+        ..tokenIdentifier = _tid(issuedAt)
+        ..randomNo = _rnd5;
+      TransferGasCreditTokenGenerator(dk, ea07).generate(token);
+      return token.tokenNo;
+    }
+
+    test('step1: 26/04/2006 10:01:00, 1 → 30790445533281098559', () {
+      expect(gen(DateTime.utc(2006, 4, 26, 10, 1, 0), 1),
+          equals('30790445533281098559'));
+    });
+    test('step2: 27/05/2006 10:02:00, 16383 → 42894813892015838675', () {
+      expect(gen(DateTime.utc(2006, 5, 27, 10, 2, 0), 16383),
+          equals('42894813892015838675'));
+    });
+    test('step3: 23/04/2007 10:03:00, 16384 → 52434363099394415104', () {
+      expect(gen(DateTime.utc(2007, 4, 23, 10, 3, 0), 16384),
+          equals('52434363099394415104'));
+    });
+    test('step4: 24/04/2007 10:04:00, 180224 → 02188175533508938765', () {
+      expect(gen(DateTime.utc(2007, 4, 24, 10, 4, 0), 180224),
+          equals('02188175533508938765'));
+    });
+    test('step5: 25/04/2007 11:00:00, 18824 → 37844075275013703544', () {
+      expect(gen(DateTime.utc(2007, 4, 25, 11, 0, 0), 18824),
+          equals('37844075275013703544'));
+    });
+    test('step6: 26/04/2007 11:01:00, 182624 → 21792662786579369978', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 11, 1, 0), 182624),
+          equals('21792662786579369978'));
+    });
+    test('step7: 26/04/2007 11:02:00, 18204 → 49679852898684944605', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 11, 2, 0), 18204),
+          equals('49679852898684944605'));
+    });
+    test('step8: 26/04/2007 11:03:00, 42624 → 23701256401082544774', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 11, 3, 0), 42624),
+          equals('23701256401082544774'));
+    });
+    test('step9: 26/04/2007 11:04:00, 182044 → 37625880630538746268', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 11, 4, 0), 182044),
+          equals('37625880630538746268'));
+    });
+    test('step10: 26/04/2007 11:05:00, 17814 → 41502904237047264837', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 11, 5, 0), 17814),
+          equals('41502904237047264837'));
+    });
+    test('step11: 26/04/2007 20:10:00, 120345 → 69115163697886873528', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 20, 10, 0), 120345),
+          equals('69115163697886873528'));
+    });
+    test('step12: 26/04/2007 11:00:00, 10449 → 57141025105111259130', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 11, 0, 0), 10449),
+          equals('57141025105111259130'));
+    });
+    test('step13: 26/04/2007 20:12:00, 12449 → 07841085711493671481', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 20, 12, 0), 12449),
+          equals('07841085711493671481'));
+    });
+    test('step14: 26/04/2007 20:14:00, 80224 → 53540735038206224963', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 20, 14, 0), 80224),
+          equals('53540735038206224963'));
+    });
+    test('step15: 26/04/2007 20:15:00, 120414 → 64397019565756691049', () {
+      expect(gen(DateTime.utc(2007, 4, 26, 20, 15, 0), 120414),
+          equals('64397019565756691049'));
+    });
   });
 
   // ===========================================================
@@ -1365,12 +1741,11 @@ void main() {
   // Same shared setup as CTSA09/CTSA12 (DKGA-04 + MISTY1, vudk04,
   // SGC=123457, TI=01, KRN=1, KT=2, PAN=600727…). Helpers reused.
   //
-  // Skipped from each Java suite:
-  //   - CTSA01 steps 2/3 (water/gas, 1993), 6/7 (water/gas, alt PAN),
-  //     10/11 (water/gas, 2014), 14/15 (water/gas, 2035): electricity
-  //     steps 1, 5, 9, 13 are ported here.
-  //   - CTSA10 steps 10..27 (water/gas amount sweep): only the 9
-  //     electricity vectors are ported.
+  // 1.0.04 water/gas vectors:
+  //   - CTSA01 steps 2/3/6/7/10/11/14/15 (water+gas across the 1993 /
+  //     2014 / 2035 baseDate sweep) are ported in sts_compliance_test.dart.
+  //   - CTSA10 steps 10..27 (water+gas amount sweep, MISTY1) — see
+  //     the CTSA10 amount-sweep group in sts_compliance_test.dart.
   //   - CTSA16 (negative test for InvalidVendingOrDecoderKeyException
   //     on bad-Luhn PAN under DKGA-04): same parity skip as 1.0.02
   //     CTSA16 — the matching exception is not raised in Dart.

@@ -402,11 +402,7 @@ void main() {
 
     test('water token credits balanceWater, not balanceKwh', () {
       final meter = _meter(balance: 10.0);
-      final tok = issueCommodityToken(
-        subclass: '1',
-        amount: 7.0,
-        randomNo: 1,
-      );
+      final tok = issueCommodityToken(subclass: '1', amount: 7.0, randomNo: 1);
       final r = meter.applyToken(tok);
       expect(r, isA<ApplyAccepted>());
       final ok = r as ApplyAccepted;
@@ -420,11 +416,7 @@ void main() {
 
     test('gas token credits balanceGas, not balanceKwh', () {
       final meter = _meter(balance: 10.0);
-      final tok = issueCommodityToken(
-        subclass: '2',
-        amount: 3.0,
-        randomNo: 2,
-      );
+      final tok = issueCommodityToken(subclass: '2', amount: 3.0, randomNo: 2);
       final r = meter.applyToken(tok);
       expect(r, isA<ApplyAccepted>());
       final ok = r as ApplyAccepted;
@@ -434,28 +426,31 @@ void main() {
       expect(meter.balanceKwh, closeTo(10.0, 1e-9));
     });
 
-    test('replay is scoped per commodity (same TID across commodities allowed)', () {
-      final meter = _meter();
-      final t = DateTime.utc(2024, 6, 1, 12, 0);
-      final water = issueCommodityToken(
-        subclass: '1',
-        amount: 1.0,
-        randomNo: 5,
-        tidTime: t,
-      );
-      final gas = issueCommodityToken(
-        subclass: '2',
-        amount: 2.0,
-        randomNo: 6,
-        tidTime: t,
-      );
-      expect(meter.applyToken(water), isA<ApplyAccepted>());
-      expect(meter.applyToken(gas), isA<ApplyAccepted>());
-      // Re-applying the water token must be a replay.
-      expect(meter.applyToken(water), isA<ApplyReplay>());
-      expect(meter.balanceWater, closeTo(1.0, 1e-9));
-      expect(meter.balanceGas, closeTo(2.0, 1e-9));
-    });
+    test(
+      'replay is scoped per commodity (same TID across commodities allowed)',
+      () {
+        final meter = _meter();
+        final t = DateTime.utc(2024, 6, 1, 12, 0);
+        final water = issueCommodityToken(
+          subclass: '1',
+          amount: 1.0,
+          randomNo: 5,
+          tidTime: t,
+        );
+        final gas = issueCommodityToken(
+          subclass: '2',
+          amount: 2.0,
+          randomNo: 6,
+          tidTime: t,
+        );
+        expect(meter.applyToken(water), isA<ApplyAccepted>());
+        expect(meter.applyToken(gas), isA<ApplyAccepted>());
+        // Re-applying the water token must be a replay.
+        expect(meter.applyToken(water), isA<ApplyReplay>());
+        expect(meter.balanceWater, closeTo(1.0, 1e-9));
+        expect(meter.balanceGas, closeTo(2.0, 1e-9));
+      },
+    );
 
     test('balances round-trip through save/load', () async {
       final dir = await Directory.systemTemp.createTemp('vmeter-comm');
@@ -477,10 +472,10 @@ void main() {
         final reloaded = VirtualMeter.load(path);
         expect(reloaded.balanceWater, closeTo(4.0, 1e-9));
         expect(reloaded.balanceGas, closeTo(6.0, 1e-9));
-        expect(
-          reloaded.appliedTokens.map((r) => r.commodity).toSet(),
-          {'water', 'gas'},
-        );
+        expect(reloaded.appliedTokens.map((r) => r.commodity).toSet(), {
+          'water',
+          'gas',
+        });
       } finally {
         await dir.delete(recursive: true);
       }
@@ -497,8 +492,13 @@ void main() {
       VirtualHsmParams.keyRevisionNo: 1,
       VirtualHsmParams.issuerIdentificationNo: '600727',
       VirtualHsmParams.decoderReferenceNumber: '12345678901',
-      VirtualHsmParams.tokenId: DateTime.utc(2024, 6, 1, 12, 0)
-          .toIso8601String(),
+      VirtualHsmParams.tokenId: DateTime.utc(
+        2024,
+        6,
+        1,
+        12,
+        0,
+      ).toIso8601String(),
       VirtualHsmParams.randomNo: 1,
       VirtualHsmParams.baseDate: '1993',
     };
