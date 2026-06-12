@@ -92,3 +92,51 @@ class ElectricityCurrencyCreditToken extends Class0Token {
     return t;
   }
 }
+
+/// Concrete: Class 0 / SubClass 1, "Transfer Water Credit" (water
+/// top-up). Identical 64-bit data block layout to
+/// [TransferElectricityCreditToken]; the [TokenSubClass] nibble is 1.
+class TransferWaterCreditToken extends Class0Token {
+  TransferWaterCreditToken(super.requestID) {
+    tokenClass = TokenClass.waterCreditTransfer();
+    tokenSubClass = TokenSubClass.waterCredit();
+  }
+
+  @override
+  String get type => 'Water_01';
+
+  factory TransferWaterCreditToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = TransferWaterCreditToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    t.encryptedTokenBitString = null;
+    return t;
+  }
+}
+
+/// Concrete: Class 0 / SubClass 2, "Transfer Gas Credit" (gas
+/// top-up). Identical 64-bit data block layout to
+/// [TransferElectricityCreditToken]; the [TokenSubClass] nibble is 2.
+class TransferGasCreditToken extends Class0Token {
+  TransferGasCreditToken(super.requestID) {
+    tokenClass = TokenClass.gasCreditTransfer();
+    tokenSubClass = TokenSubClass.gasCredit();
+  }
+
+  @override
+  String get type => 'Gas_02';
+
+  factory TransferGasCreditToken.decoded(
+    String requestID,
+    BitString decryptedDataBlock,
+    BitString encryptedDataBlock,
+  ) {
+    final t = TransferGasCreditToken(requestID);
+    t.decode(decryptedDataBlock, encryptedDataBlock);
+    t.encryptedTokenBitString = null;
+    return t;
+  }
+}

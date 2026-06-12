@@ -60,3 +60,21 @@ class ElectricityCurrencyCreditTokenGenerator
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 }
+
+/// Concrete Class 0 / SubClass 1 generator (water top-up).
+class TransferWaterCreditTokenGenerator
+    extends Class0TokenGenerator<TransferWaterCreditToken> {
+  TransferWaterCreditTokenGenerator(
+    DecoderKey decoderKey,
+    EncryptionAlgorithm encryptionAlgorithm,
+  ) : super(decoderKey, encryptionAlgorithm);
+}
+
+/// Concrete Class 0 / SubClass 2 generator (gas top-up).
+class TransferGasCreditTokenGenerator
+    extends Class0TokenGenerator<TransferGasCreditToken> {
+  TransferGasCreditTokenGenerator(
+    DecoderKey decoderKey,
+    EncryptionAlgorithm encryptionAlgorithm,
+  ) : super(decoderKey, encryptionAlgorithm);
+}

@@ -72,6 +72,22 @@ class TokenDecoderDispatcher {
                   encrypted64,
                 ),
               );
+            case 1:
+              return DecodeAccepted(
+                TransferWaterCreditToken.decoded(
+                  requestID,
+                  decrypted64,
+                  encrypted64,
+                ),
+              );
+            case 2:
+              return DecodeAccepted(
+                TransferGasCreditToken.decoded(
+                  requestID,
+                  decrypted64,
+                  encrypted64,
+                ),
+              );
             case 4:
               return DecodeAccepted(
                 ElectricityCurrencyCreditToken.decoded(

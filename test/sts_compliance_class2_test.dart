@@ -27,8 +27,8 @@
 //     not present in the Dart port. See `sts_compliance_test.dart`
 //     header — KEN is not mixed into the Class 2 data block.
 //
-// Class 1 vectors (CTSA02) are exercised below. CTSA11 (Class 1
-// extended vectors) is not yet ported.
+// Class 1 vectors (CTSA02, CTSA11) are exercised in
+// `class1_and_dispatcher_test.dart` and `sts_compliance_class1_test.dart`.
 import 'dart:typed_data';
 
 import 'package:nectar_sts_dart/nectar_sts_dart.dart';
