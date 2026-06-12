@@ -11,3 +11,8 @@ meters.json
 
 # Generated proposal decks (rebuild with: python doc/build_pptx.py)
 doc/*.pptx
+
+# Internal-only derived STS specification (reverse-engineered from this
+# code; the published IEC 62055-41 spec is licensed by IEC and must not
+# be redistributed). Regenerate by asking the AI assistant.
+/spec/
