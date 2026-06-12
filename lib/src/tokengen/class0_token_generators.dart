@@ -4,7 +4,6 @@ import '../encryption/encryption_algorithm.dart';
 import '../exceptions/exceptions.dart';
 import '../keys/decoder_key.dart';
 import '../token/class0_tokens.dart';
-import '../token/token.dart';
 import 'token_generator.dart';
 
 /// Class 0 generator. Builds the 64-bit decrypted data block as

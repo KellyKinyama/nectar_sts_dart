@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:tls/tls.dart' as tls;
-
+import '../_internal/cipher/des.dart' as des_impl;
 import '../base/bit_string.dart';
 import '../exceptions/exceptions.dart';
 import '../keys/decoder_key.dart';
@@ -11,8 +10,8 @@ import 'encryption_algorithm.dart';
 /// single 8-byte block.
 ///
 /// Direct port of `domain/encryptionalgorithm/DataEncryptionAlgorithm.java`
-/// but the DES primitive comes from the local `tls` package
-/// (`package:tls/cipher/des.dart`) instead of JCE / BouncyCastle.
+/// but the DES primitive is a vendored pure-Dart implementation
+/// (see `lib/src/_internal/cipher/des.dart`) instead of JCE / BouncyCastle.
 ///
 /// Notes on the Java original we deliberately do NOT replicate:
 ///
@@ -65,7 +64,7 @@ Uint8List _desEcbEncrypt(List<int> key, List<int> input) {
   for (var off = 0; off < input.length; off += 8) {
     final zeroIv = Uint8List(8);
     final block = input.sublist(off, off + 8);
-    final ct = tls.desEncrypt(block, zeroIv, key);
+    final ct = des_impl.desEncrypt(block, zeroIv, key);
     out.setRange(off, off + 8, ct);
   }
   return out;
@@ -84,7 +83,7 @@ Uint8List _desEcbDecrypt(List<int> key, List<int> input) {
   for (var off = 0; off < input.length; off += 8) {
     final zeroIv = Uint8List(8);
     final block = input.sublist(off, off + 8);
-    final pt = tls.desDecrypt(block, zeroIv, key);
+    final pt = des_impl.desDecrypt(block, zeroIv, key);
     out.setRange(off, off + 8, pt);
   }
   return out;

@@ -1,0 +1,13 @@
+# Publish-time excludes (in addition to .gitignore).
+# Keep author-only build scripts, generated artefacts and local
+# runtime state out of the uploaded archive.
+
+# Author-only build script for the proposal deck.
+doc/build_pptx.py
+doc/*.pptx
+
+# Local environment + runtime state (also in .gitignore).
+.env
+.env.local
+vending.json
+meters.json

@@ -1,6 +1,5 @@
 import '../base/bit_string.dart';
 import '../domain/amount.dart';
-import '../domain/crc.dart';
 import '../domain/random_no.dart';
 import '../domain/token_class.dart';
 import '../domain/token_identifier.dart';

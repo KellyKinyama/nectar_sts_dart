@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:tls/tls.dart' as tls;
-
+import '../_internal/digest/hmac.dart' as hmac_impl;
+import '../_internal/digest/sha.dart' as sha_impl;
 import '../domain/base_date.dart';
 import '../domain/primitives.dart';
 import '../encryption/encryption_algorithm.dart';
@@ -89,7 +89,11 @@ class DecoderKeyGeneratorAlgorithm04 extends DecoderKeyGeneratorAlgorithm {
     }
 
     final dataBlock = _buildDataBlock(decoderKeyLengthMarker);
-    final mac = tls.hmac(vendingKey.keyData, dataBlock, tls.newSha256Digest());
+    final mac = hmac_impl.hmac(
+      vendingKey.keyData,
+      dataBlock,
+      sha_impl.newSha256Digest(),
+    );
 
     if (encryptionAlgorithm.code == EncryptionAlgorithmCode.misty1) {
       return DecoderKey(Uint8List.fromList(mac.sublist(0, 16)));

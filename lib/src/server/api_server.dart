@@ -203,7 +203,7 @@ String _resolveRequestId(Request request, Map<String, dynamic>? body) {
   final slot = request.context['request_id_slot'];
   final headerAlreadyResolved = slot is _RequestIdSlot && slot.value != null;
   if (headerAlreadyResolved) {
-    return (slot as _RequestIdSlot).value!;
+    return slot.value!;
   }
   final fromHeader = request.headers['x-request-id'];
   if (fromHeader != null && fromHeader.isNotEmpty) {

@@ -1,6 +1,9 @@
 include: package:lints/recommended.yaml
 
 analyzer:
+  exclude:
+    # Vendored upstream code — keep it byte-identical to its source.
+    - lib/src/_internal/**
   errors:
     # Algorithm port — many fields are set during construction and read later,
     # the analyzer's "could be final" advice is noise here.

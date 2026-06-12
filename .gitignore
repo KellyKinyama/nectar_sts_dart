@@ -9,5 +9,5 @@ build/
 vending.json
 meters.json
 
-# Generated proposal decks (rebuild with: python docs/build_pptx.py)
-docs/*.pptx
+# Generated proposal decks (rebuild with: python doc/build_pptx.py)
+doc/*.pptx

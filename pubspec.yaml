@@ -1,19 +1,24 @@
 name: nectar_sts_dart
 description: >-
-  Pure-Dart port of the algorithmic core of NectarAPI/tokens-service —
-  IEC 62055-41 (STS) decoder-key generation (DKGA-02/04), token encryption
-  (EA07 / DES / MISTY1), and the full token-class / generator / decoder
-  hierarchy. Algorithm core only; no HTTP, no DB, no HSM.
+  Pure-Dart port of the IEC 62055-41 (STS) prepaid-electricity token core:
+  DKGA-02 / DKGA-04 key derivation, EA07 / EA09 (DES) / EA11 (MISTY1)
+  encryption, Class 0/1/2 generators and decoders, plus a virtual HSM
+  and meter simulator.
 version: 0.1.0
-publish_to: none
+repository: https://github.com/KellyKinyama/nectar_sts_dart
+homepage: https://github.com/KellyKinyama/nectar_sts_dart
+issue_tracker: https://github.com/KellyKinyama/nectar_sts_dart/issues
+topics:
+  - sts
+  - iec62055-41
+  - prepaid-electricity
+  - cryptography
+  - meter
 
 environment:
   sdk: ^3.4.0
 
 dependencies:
-  # Pure-Dart DES + HMAC + AES from the local TLS educational stack.
-  tls:
-    path: ../tls
   # HTTP server stack for the optional `bin/server.dart` MVP that
   # exposes a NectarAPI-compatible REST surface.
   shelf: ^1.4.0

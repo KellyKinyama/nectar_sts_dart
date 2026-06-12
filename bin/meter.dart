@@ -196,6 +196,12 @@ int _cmdApply(Map<String, String> args) {
     case ApplyRejected(:final reason):
       stderr.writeln('REJECTED: $reason');
       return 65;
+    case _:
+      // KCT staging / rotation / Class 2 admin variants — persist any
+      // state mutation and print a one-line summary.
+      meter.save();
+      stdout.writeln('APPLIED  ${result.runtimeType}');
+      return 0;
   }
 }
 
