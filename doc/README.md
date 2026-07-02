@@ -38,6 +38,9 @@ vending key `abababababababab`.
   rotation, security caveats, and what it takes to decode *real* STS
   tokens (spoiler: the vending key — which you almost certainly
   don't have).
+- [Using the Prism HSM — operator's guide](./using-prism-hsm.md) —
+  env config, HTTP surface, direct `PrismIssuer` / `TokenApiClient`
+  use, connection pooling, TLS caveats, and current wiring gaps.
 - [STS compliance vector reference](./sts_compliance.md) — indexed
   reference for every CTSA vector ported into
   [test/sts_compliance_test.dart](../test/sts_compliance_test.dart),
