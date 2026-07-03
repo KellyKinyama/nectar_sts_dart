@@ -172,6 +172,37 @@ class VirtualHsmParams {
 
 /// Adds the params-driven `generateToken` / `decodeToken` entry points
 /// on top of the typed key-derivation API on [VirtualHsm].
+///
+/// Example (Class 0/0 electricity credit round-trip, from
+/// `test/virtual_hsm_dispatch_test.dart`):
+/// ```dart
+/// final hsm = VirtualHsm(
+///   VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+/// );
+///
+/// final params = {
+///   VirtualHsmParams.decoderKeyGenerationAlgorithm: '02',
+///   VirtualHsmParams.encryptionAlgorithm:           'sta',
+///   VirtualHsmParams.keyType:                       2,
+///   VirtualHsmParams.supplyGroupCode:               '123456',
+///   VirtualHsmParams.tariffIndex:                   '07',
+///   VirtualHsmParams.keyRevisionNo:                 1,
+///   VirtualHsmParams.issuerIdentificationNo:        '600727',
+///   VirtualHsmParams.decoderReferenceNumber:        '12345678901',
+///   VirtualHsmParams.tokenClass:    '0',
+///   VirtualHsmParams.tokenSubclass: '0',
+///   VirtualHsmParams.amount:        25.5,
+///   VirtualHsmParams.tokenId:       '2024-06-01T12:00:00Z',
+///   VirtualHsmParams.randomNo:      7,
+///   VirtualHsmParams.baseDate:      '1993',
+/// };
+///
+/// final issued  = hsm.generateToken('req-A1',         params);
+/// final decoded = hsm.decodeToken  ('req-A1.decode',  issued.tokenNo, params);
+///
+/// (decoded as TransferElectricityCreditToken)
+///     .amountPurchased!.unitsPurchased; // 25.5
+/// ```
 extension VirtualHsmDispatch on VirtualHsm {
   /// Issue a token from a flat param map. See [VirtualHsmParams] for
   /// key names. Returns the fully-generated [Token] (with

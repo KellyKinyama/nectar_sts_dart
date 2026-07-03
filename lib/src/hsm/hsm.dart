@@ -54,6 +54,24 @@ abstract class Hsm {
 /// tests, embedded apps, demos, and any deployment where holding the
 /// vending key in process memory is acceptable. For production
 /// vending behind real hardware, plug in [PrismHsm].
+///
+/// Example (from `test/dkga_test.dart`):
+/// ```dart
+/// final hsm = VirtualHsm(
+///   VendingCommonDesKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]),
+/// );
+///
+/// final decoderKey = hsm.deriveDecoderKeyDkga02(
+///   issuerIdentificationNumber:            IssuerIdentificationNumber('600727'),
+///   individualAccountIdentificationNumber:
+///       IndividualAccountIdentificationNumber('12345678901'),
+///   keyType:                               KeyType(2),
+///   supplyGroupCode:                       SupplyGroupCode('123456'),
+///   tariffIndex:                           TariffIndex('07'),
+///   keyRevisionNumber:                     KeyRevisionNumber(1),
+/// );
+/// decoderKey.keyData.length; // 8
+/// ```
 class VirtualHsm extends Hsm {
   /// Long-term shared vending master key. In real hardware this
   /// would live behind a secure boundary; here it sits in process

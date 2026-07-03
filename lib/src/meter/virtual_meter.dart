@@ -469,6 +469,46 @@ class MeterIdentity {
       );
 }
 
+/// In-memory simulator of a physical STS prepayment meter.
+///
+/// Bundles a [MeterIdentity], a currently-active decoder key, running
+/// kWh / water / gas balances, an append-only audit log of applied
+/// tokens, and the staged halves of any in-progress Key Change Token
+/// rotation. Instances are created via [VirtualMeter.setup] (derives
+/// the initial decoder key from a vending key) and persisted to disk
+/// via [save] / [load].
+///
+/// Example (from `test/virtual_meter_test.dart`):
+/// ```dart
+/// // 1. Personalize a fresh meter.
+/// final meter = VirtualMeter.setup(
+///   identity: const MeterIdentity(
+///     issuerIdentificationNumber:            '600727',
+///     individualAccountIdentificationNumber: '12345678901',
+///     keyType:                               2,
+///     supplyGroupCode:                       '123456',
+///     tariffIndex:                           '07',
+///     keyRevisionNumber:                     1,
+///   ),
+///   vendingKeyBytes:    parseHexKey('0123456789ABCDEF'),
+///   initialBalanceKwh:  10.0,
+/// );
+///
+/// // 2. Issue a 25.5 kWh token via the same VirtualHsm the utility uses.
+/// final tokenNo = VirtualHsm(
+///   VendingCommonDesKey(parseHexKey('0123456789ABCDEF')),
+/// ).generateToken('issue', { /* ... same params as meter identity ... */ })
+///  .tokenNo;
+///
+/// // 3. Apply it.
+/// final r = meter.applyToken(tokenNo) as ApplyAccepted;
+/// r.amountKwh;         // 25.5
+/// r.newBalanceKwh;     // 35.5
+/// meter.balanceKwh;    // 35.5
+///
+/// // 4. Replay is rejected.
+/// meter.applyToken(tokenNo); // ApplyReplay
+/// ```
 class VirtualMeter {
   /// Personalization descriptor (IIN / IAIN / SGC / TI / KRN / DKGA).
   MeterIdentity identity;
