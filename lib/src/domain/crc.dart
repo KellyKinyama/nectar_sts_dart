@@ -8,17 +8,25 @@ import '../util/utils.dart';
 /// being returned (per the Java original), matching the on-wire byte
 /// order for STS tokens.
 class Crc {
+  /// Width of the CRC bit-field on the wire (`16`).
   static const int noOfBits = 16;
   BitString _bits;
 
+  /// Creates a zero-valued 16-bit CRC placeholder, ready to be filled
+  /// by [generateCrc] / [generateCrcBytes].
   Crc() : _bits = BitString.fromValue(0, noOfBits);
 
+  /// Wraps an existing 16-bit CRC value.
+  ///
+  /// Throws [InvalidRangeException] if [bs] is not exactly 16 bits
+  /// wide.
   Crc.fromBitString(BitString bs) : _bits = bs {
     if (bs.length != noOfBits) {
       throw const InvalidRangeException('CRC must be 16 bits');
     }
   }
 
+  /// The 16-bit CRC as a [BitString].
   BitString get bitString => _bits;
 
   /// Compute the CRC of the *value* of `initialBitString` (interpreted

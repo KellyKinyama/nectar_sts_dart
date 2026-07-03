@@ -19,13 +19,36 @@ import '../base/bit_string.dart' show RotateDirection;
 abstract class Key {
   Uint8List _keyData;
 
+  /// Base constructor for subclasses.
+  ///
+  /// [keyData] is defensively copied into an internal [Uint8List]; if
+  /// omitted or null the key starts empty.
   Key([List<int>? keyData]) : _keyData = Uint8List.fromList(keyData ?? []);
 
+  /// The raw key bytes.
+  ///
+  /// The returned view is the live internal buffer — in-place edits
+  /// mutate the key. Use the [keyData] setter to swap the whole
+  /// buffer atomically.
   Uint8List get keyData => _keyData;
+
+  /// Replaces the internal buffer with a defensive copy of [bytes].
   set keyData(List<int> bytes) => _keyData = Uint8List.fromList(bytes);
 
+  /// Human-readable name identifying the role of this key (e.g.
+  /// `"Decoder Key"`, `"Vending Common DES Key"`).
   String get name;
+
+  /// Subclass-defined string form of the key bits used for debugging.
+  ///
+  /// Endianness and length are implementation-defined; see each
+  /// subclass for details.
   String bitsToString();
+
+  /// View of the key bytes as a [bs.BitString].
+  ///
+  /// The concrete width and bit ordering depend on the subclass
+  /// (e.g. [DecoderKey] returns a 64-bit little-endian view).
   bs.BitString get bitString;
 
   /// Bitwise NOT of the first 8 bytes of the input. The Java original
@@ -45,10 +68,14 @@ abstract class Key {
     return rotate(complemented, lenBits, 12, RotateDirection.right);
   }
 
+  /// Rotates [input] right by [steps] bits, treating it as a single
+  /// big-endian bit string of `input.length * 8` bits.
   Uint8List rotateRight(List<int> input, int steps) {
     return rotate(input, input.length * 8, steps, RotateDirection.right);
   }
 
+  /// Rotates [input] left by [steps] bits, treating it as a single
+  /// big-endian bit string of `input.length * 8` bits.
   Uint8List rotateLeft(List<int> input, int steps) {
     return rotate(input, input.length * 8, steps, RotateDirection.left);
   }

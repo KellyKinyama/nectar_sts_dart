@@ -68,46 +68,104 @@ class VirtualHsmParams {
   VirtualHsmParams._();
 
   // dispatch
+  /// `class` — top-level token class (`'0'`, `'1'`, `'2'`).
   static const tokenClass = 'class';
+
+  /// `subclass` — sub-class nibble as a decimal string (e.g. `'0'`).
   static const tokenSubclass = 'subclass';
+
+  /// `type` — optional dispatch hint (e.g. `'prism-thrift'`, rejected here).
   static const type = 'type';
 
   // decoder key derivation
+  /// `decoder_key_generation_algorithm` — DKGA number (`'02'` / `'04'`).
   static const decoderKeyGenerationAlgorithm =
       'decoder_key_generation_algorithm';
+
+  /// `encryption_algorithm` — `'sta'` / `'dea'` / `'misty1'`.
   static const encryptionAlgorithm = 'encryption_algorithm';
+
+  /// `key_type` — numeric key-type code.
   static const keyType = 'key_type';
+
+  /// `supply_group_code` — 6-digit SGC.
   static const supplyGroupCode = 'supply_group_code';
+
+  /// `tariff_index` — 2-digit tariff-index string.
   static const tariffIndex = 'tariff_index';
+
+  /// `key_revision_no` — integer KRN.
   static const keyRevisionNo = 'key_revision_no';
+
+  /// `issuer_identification_no` — 6-digit IIN.
   static const issuerIdentificationNo = 'issuer_identification_no';
+
+  /// `decoder_reference_number` — 11-digit IAIN / DRN.
   static const decoderReferenceNumber = 'decoder_reference_number';
+
+  /// `base_date` — ISO-ish base date (DKGA-04 only).
   static const baseDate = 'base_date';
+
+  /// `vending_key` — hex-encoded master key (only surfaces in tests).
   static const vendingKey = 'vending_key';
 
   // payload
+  /// `amount` — numeric credit amount.
   static const amount = 'amount';
+
+  /// `token_id` — ISO-8601 issue timestamp string.
   static const tokenId = 'token_id';
+
+  /// `random_no` — optional 4-bit nonce; auto-generated when absent.
   static const randomNo = 'random_no';
+
+  /// `manufacturer_code` — vendor code for Class 1 tokens.
   static const manufacturerCode = 'manufacturer_code';
+
+  /// `control` — Class 1 control-field integer.
   static const control = 'control';
 
   // Class 2 key-change tokens (params match the upstream Java
   // `Set*SectionDecoderKeyToken.getParams()` keys exactly).
+  /// `new_decoder_key` — hex-encoded key material being rotated in.
   static const newDecoderKey = 'new_decoder_key';
+
+  /// `new_supply_group_code` — 6-digit SGC for the MISTY1 3rd/4th
+  /// section KCTs.
   static const newSupplyGroupCode = 'new_supply_group_code';
+
+  /// `key_expiry_number_high_order` — high nibble of the new KEN.
   static const keyExpiryNumberHighOrder = 'key_expiry_number_high_order';
+
+  /// `key_expiry_number_low_order` — low nibble of the new KEN.
   static const keyExpiryNumberLowOrder = 'key_expiry_number_low_order';
+
+  /// `new_key_revision_number` — new KRN.
   static const newKeyRevisionNumber = 'new_key_revision_number';
+
+  /// `new_key_type` — new key-type code.
   static const newKeyType = 'new_key_type';
+
+  /// `new_tariff_index` — new tariff-index string.
   static const newTariffIndex = 'new_tariff_index';
+
+  /// `roll_over_key_change` — rollover flag (0/1).
   static const rollOverKeyChange = 'roll_over_key_change';
 
   // Class 2 register-payload management tokens.
+  /// `maximum_power_limit` — 16-bit MPL for SetMaximumPowerLimit.
   static const maximumPowerLimit = 'maximum_power_limit';
+
+  /// `register` — 16-bit register snapshot for ClearCredit.
   static const register = 'register';
+
+  /// `tariff_rate` — 16-bit rate for SetTariffRate.
   static const tariffRate = 'tariff_rate';
+
+  /// `pad` — 16-bit nonce for ClearTamperCondition.
   static const pad = 'pad';
+
+  /// `maximum_phase_power_unbalance_limit` — 16-bit MPPUL.
   static const maximumPhasePowerUnbalanceLimit =
       'maximum_phase_power_unbalance_limit';
 }
@@ -260,11 +318,11 @@ extension VirtualHsmDispatch on VirtualHsm {
           ),
           individualAccountIdentificationNumber:
               IndividualAccountIdentificationNumber(
-                _required(
-                  params,
-                  VirtualHsmParams.decoderReferenceNumber,
-                ).toString(),
-              ),
+            _required(
+              params,
+              VirtualHsmParams.decoderReferenceNumber,
+            ).toString(),
+          ),
           keyType: KeyType(_intParam(params, VirtualHsmParams.keyType)),
           supplyGroupCode: SupplyGroupCode(
             _required(params, VirtualHsmParams.supplyGroupCode).toString(),
@@ -629,7 +687,7 @@ extension VirtualHsmDispatch on VirtualHsm {
   }
 
   SetMaximumPhasePowerUnbalanceLimitToken
-  _generateClass2SetMaximumPhasePowerUnbalanceLimit(
+      _generateClass2SetMaximumPhasePowerUnbalanceLimit(
     String requestID,
     Map<String, dynamic> params,
     DecoderKey decoderKey,

@@ -12,16 +12,26 @@ import '../token/token.dart';
 /// transfer pair (1st + 2nd sections); 3rd / 4th section (for the
 /// 128-bit MISTY1 path) are rejected with [NotImplementedException].
 class Class2TokenDecoder {
+  /// Current decoder key used to decrypt the 64-bit block.
   final DecoderKey decoderKey;
+
+  /// Encryption algorithm used for the decrypt phase (STA / MISTY1 /
+  /// ...).
   final EncryptionAlgorithm encryptionAlgorithm;
 
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   Class2TokenDecoder(this.decoderKey, this.encryptionAlgorithm);
 
+  /// Decode a Class 2 token from its 20-digit displayable form.
   Class2Token decodeDecimal(String requestID, String decimal20) {
     final binary66 = TokenTransposition.tokenNoToBinary66(decimal20);
     return decodeBinary66(requestID, binary66);
   }
 
+  /// Decode a Class 2 token from the raw 66-bit binary string.
+  ///
+  /// Throws [TokenError] when the token class is not 2, and
+  /// [NotImplementedException] for unsupported sub-classes.
   Class2Token decodeBinary66(String requestID, String binary66) {
     final r = TokenTransposition.untransposeFromBinary66(binary66);
     if (r.tokenClass.bitString.value != 2) {

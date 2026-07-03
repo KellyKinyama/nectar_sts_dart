@@ -10,9 +10,13 @@ import '../token/token.dart';
 /// [TransferElectricityCreditDecoder]; only the rehydrated token
 /// type differs.
 class ElectricityCurrencyCreditDecoder {
+  /// Decoder key used to decrypt the 64-bit block.
   final DecoderKey decoderKey;
+
+  /// Encryption algorithm used for the decrypt phase.
   final EncryptionAlgorithm encryptionAlgorithm;
 
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   ElectricityCurrencyCreditDecoder(this.decoderKey, this.encryptionAlgorithm);
 
   ElectricityCurrencyCreditToken decodeDecimal(

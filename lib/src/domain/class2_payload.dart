@@ -17,8 +17,11 @@ import 'primitives.dart';
 /// Full 8-bit Key Expiry Number (KEN). Carried split across two
 /// 4-bit halves on the wire (KENHO + KENLO).
 class KeyExpiryNumber {
+  /// Full 8-bit KEN value in `0..255`.
   final int value;
 
+  /// Validates and stores [value]; throws
+  /// [InvalidKeyExpiryNumberException] outside `0..255`.
   KeyExpiryNumber(this.value) {
     if (value < 0 || value > 255) {
       throw const InvalidKeyExpiryNumberException(
@@ -31,16 +34,21 @@ class KeyExpiryNumber {
   factory KeyExpiryNumber.fromHighAndLow(
     KeyExpiryNumberHighOrder high,
     KeyExpiryNumberLowOrder low,
-  ) => KeyExpiryNumber((high.bitString.value << 4) | low.bitString.value);
+  ) =>
+      KeyExpiryNumber((high.bitString.value << 4) | low.bitString.value);
 
+  /// High-order nibble of [value] (bits 4..7).
   KeyExpiryNumberHighOrder get high =>
       KeyExpiryNumberHighOrder(BitString.fromValue((value >> 4) & 0xF, 4));
 
+  /// Low-order nibble of [value] (bits 0..3).
   KeyExpiryNumberLowOrder get low =>
       KeyExpiryNumberLowOrder(BitString.fromValue(value & 0xF, 4));
 
+  /// Human-readable field name.
   String get name => 'Key Expiry Number';
 
+  /// Returns [value] as a decimal string.
   @override
   String toString() => '$value';
 }
@@ -48,66 +56,89 @@ class KeyExpiryNumber {
 /// High-order nibble of the Key Expiry Number, carried in the 1st
 /// Section Decoder Key Change Token (bits 56..59 of the data block).
 class KeyExpiryNumberHighOrder {
+  /// Packed 4-bit high-order KEN nibble.
   final BitString bitString;
 
+  /// Wraps a pre-built 4-bit [bitString]; throws
+  /// [InvalidKenhoException] for any other width.
   KeyExpiryNumberHighOrder(this.bitString) {
     if (bitString.length != 4) {
       throw const InvalidKenhoException('KENHO must be exactly 4 bits');
     }
   }
 
+  /// Integer value of the nibble (`0..15`).
   int get value => bitString.value;
+
+  /// Human-readable field name.
   String get name => 'Key Expiry Number High Order';
 }
 
 /// Low-order nibble of the Key Expiry Number, carried in the 2nd
 /// Section Decoder Key Change Token (bits 56..59 of the data block).
 class KeyExpiryNumberLowOrder {
+  /// Packed 4-bit low-order KEN nibble.
   final BitString bitString;
 
+  /// Wraps a pre-built 4-bit [bitString]; throws
+  /// [InvalidKenloException] for any other width.
   KeyExpiryNumberLowOrder(this.bitString) {
     if (bitString.length != 4) {
       throw const InvalidKenloException('KENLO must be exactly 4 bits');
     }
   }
 
+  /// Integer value of the nibble (`0..15`).
   int get value => bitString.value;
+
+  /// Human-readable field name.
   String get name => 'Key Expiry Number Low Order';
 }
 
 /// High-order 32 bits of a new 64-bit decoder key, carried in the
 /// 1st Section KCT (bits 16..47 of the data block).
 class NewKeyHighOrder {
+  /// Packed 32-bit high-order half of the new decoder key.
   final BitString bitString;
 
+  /// Wraps a pre-built 32-bit [bitString]; throws [InvalidNkhoException]
+  /// for any other width.
   NewKeyHighOrder(this.bitString) {
     if (bitString.length != 32) {
       throw const InvalidNkhoException('NKHO must be exactly 32 bits');
     }
   }
 
+  /// Human-readable field name.
   String get name => 'New Key High Order';
 }
 
 /// Low-order 32 bits of a new 64-bit decoder key, carried in the
 /// 2nd Section KCT (bits 16..47 of the data block).
 class NewKeyLowOrder {
+  /// Packed 32-bit low-order half of the new decoder key.
   final BitString bitString;
 
+  /// Wraps a pre-built 32-bit [bitString]; throws [InvalidNkloException]
+  /// for any other width.
   NewKeyLowOrder(this.bitString) {
     if (bitString.length != 32) {
       throw const InvalidNkloException('NKLO must be exactly 32 bits');
     }
   }
 
+  /// Human-readable field name.
   String get name => 'New Key Low Order';
 }
 
 /// Middle-order 1 of a new 128-bit MISTY1 decoder key (3rd / 4th
 /// section KCT — MISTY1 path only, currently out of scope).
 class NewKeyMiddleOrder1 {
+  /// Packed 32-bit MISTY1 key half.
   final BitString bitString;
 
+  /// Wraps a pre-built 32-bit [bitString]; throws
+  /// [InvalidNewKeyMiddleOrder1Exception] for any other width.
   NewKeyMiddleOrder1(this.bitString) {
     if (bitString.length != 32) {
       throw const InvalidNewKeyMiddleOrder1Exception(
@@ -116,14 +147,18 @@ class NewKeyMiddleOrder1 {
     }
   }
 
+  /// Human-readable field name.
   String get name => 'New Key Middle Order 1';
 }
 
 /// Middle-order 2 of a new 128-bit MISTY1 decoder key (3rd / 4th
 /// section KCT — MISTY1 path only, currently out of scope).
 class NewKeyMiddleOrder2 {
+  /// Packed 32-bit MISTY1 key half.
   final BitString bitString;
 
+  /// Wraps a pre-built 32-bit [bitString]; throws
+  /// [InvalidNewKeyMiddleOrder2Exception] for any other width.
   NewKeyMiddleOrder2(this.bitString) {
     if (bitString.length != 32) {
       throw const InvalidNewKeyMiddleOrder2Exception(
@@ -132,6 +167,7 @@ class NewKeyMiddleOrder2 {
     }
   }
 
+  /// Human-readable field name.
   String get name => 'New Key Middle Order 2';
 }
 
@@ -139,8 +175,11 @@ class NewKeyMiddleOrder2 {
 /// KCT. RO=0 → simple key change, RO=1 → key rollover (the old key
 /// remains valid for an in-flight grace period).
 class RolloverKeyChange {
+  /// Packed 1-bit rollover flag.
   final BitString bitString;
 
+  /// Wraps a pre-built 1-bit [bitString]; throws
+  /// [InvalidRollOverKeyChangeException] for any other width.
   RolloverKeyChange(this.bitString) {
     if (bitString.length != 1) {
       throw const InvalidRollOverKeyChangeException(
@@ -149,10 +188,14 @@ class RolloverKeyChange {
     }
   }
 
+  /// Builds the flag from a boolean.
   factory RolloverKeyChange.fromBool(bool rollover) =>
       RolloverKeyChange(BitString.fromValue(rollover ? 1 : 0, 1));
 
+  /// Whether this KCT is a rollover (`true`) or a hard change (`false`).
   bool get isRollover => bitString.value == 1;
+
+  /// Human-readable field name.
   String get name => 'Roll Over Key Change';
 }
 
@@ -161,24 +204,32 @@ class RolloverKeyChange {
 /// `_3KCT` because in the 128-bit transfer flow this bit indicates
 /// that a 3rd-section KCT is part of the pending set.
 class Reserved3Kct {
+  /// Packed 1-bit reserved flag.
   final BitString bitString;
 
+  /// Wraps a pre-built 1-bit [bitString]; throws
+  /// [InvalidBitStringException] for any other width.
   Reserved3Kct(this.bitString) {
     if (bitString.length != 1) {
       throw const InvalidBitStringException('_3KCT must be exactly 1 bit');
     }
   }
 
+  /// Returns the always-zero variant used on the 64-bit STA path.
   factory Reserved3Kct.zero() => Reserved3Kct(BitString.fromValue(0, 1));
 
+  /// Human-readable field name.
   String get name => '_3KCT';
 }
 
 /// High-order 12 bits of a new Supply Group Code, carried in the
 /// 4th Section KCT (MISTY1 path only).
 class SupplyGroupCodeHighOrder {
+  /// Packed 12-bit high-order SGC nibble.
   final BitString bitString;
 
+  /// Wraps a pre-built 12-bit [bitString]; throws
+  /// [InvalidSgchoException] for any other width.
   SupplyGroupCodeHighOrder(this.bitString) {
     if (bitString.length != 12) {
       throw const InvalidSgchoException('SGCHO must be exactly 12 bits');
@@ -193,14 +244,18 @@ class SupplyGroupCodeHighOrder {
     return SupplyGroupCodeHighOrder(BitString.fromBinary(bin.substring(0, 12)));
   }
 
+  /// Human-readable field name.
   String get name => 'Supply Group Code High Order';
 }
 
 /// Low-order 12 bits of a new Supply Group Code, carried in the
 /// 3rd Section KCT (MISTY1 path only).
 class SupplyGroupCodeLowOrder {
+  /// Packed 12-bit low-order SGC nibble.
   final BitString bitString;
 
+  /// Wraps a pre-built 12-bit [bitString]; throws
+  /// [InvalidSgcloException] for any other width.
   SupplyGroupCodeLowOrder(this.bitString) {
     if (bitString.length != 12) {
       throw const InvalidSgcloException('SGCLO must be exactly 12 bits');
@@ -215,6 +270,7 @@ class SupplyGroupCodeLowOrder {
     return SupplyGroupCodeLowOrder(BitString.fromBinary(bin.substring(12, 24)));
   }
 
+  /// Human-readable field name.
   String get name => 'Supply Group Code Low Order';
 }
 
@@ -245,8 +301,7 @@ class SupplyGroupCodeLowOrder {
 /// 64-bit decoder key. Used by the meter when both Decoder Key
 /// Change Token sections have arrived.
 DecoderKey combineStaDecoderKey(NewKeyHighOrder high, NewKeyLowOrder low) {
-  final combined =
-      '${high.bitString.toPaddedBinary()}'
+  final combined = '${high.bitString.toPaddedBinary()}'
       '${low.bitString.toPaddedBinary()}';
   if (combined.length != 64) {
     throw const InvalidKeyDataException(
@@ -281,8 +336,7 @@ DecoderKey combineStaDecoderKey(NewKeyHighOrder high, NewKeyLowOrder low) {
   NewKeyMiddleOrder2 middle2,
   NewKeyMiddleOrder1 middle1,
   NewKeyLowOrder low,
-})
-splitMisty1DecoderKey(DecoderKey key) {
+}) splitMisty1DecoderKey(DecoderKey key) {
   final s = key.bitsToStringReversed();
   if (s.length != 128) {
     throw const InvalidKeyDataException(
@@ -306,8 +360,7 @@ DecoderKey combineMisty1DecoderKey(
   NewKeyMiddleOrder1 middle1,
   NewKeyLowOrder low,
 ) {
-  final combined =
-      '${high.bitString.toPaddedBinary()}'
+  final combined = '${high.bitString.toPaddedBinary()}'
       '${middle2.bitString.toPaddedBinary()}'
       '${middle1.bitString.toPaddedBinary()}'
       '${low.bitString.toPaddedBinary()}';

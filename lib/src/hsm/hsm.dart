@@ -16,13 +16,15 @@ import '../keys/vending_key.dart';
 /// these methods and the HSM does the DKGA computation inside the
 /// secure boundary, returning the derived decoder key.
 abstract class Hsm {
+  /// Short human-readable label (`"VirtualHsm"` /
+  /// `"PrismHsm(...)"`) used in logs and error messages.
   String get name;
 
   /// Run DKGA-02 (DES-based) to derive a decoder key.
   DecoderKey deriveDecoderKeyDkga02({
     required IssuerIdentificationNumber issuerIdentificationNumber,
     required IndividualAccountIdentificationNumber
-    individualAccountIdentificationNumber,
+        individualAccountIdentificationNumber,
     required KeyType keyType,
     required SupplyGroupCode supplyGroupCode,
     required TariffIndex tariffIndex,
@@ -53,10 +55,15 @@ abstract class Hsm {
 /// vending key in process memory is acceptable. For production
 /// vending behind real hardware, plug in [PrismHsm].
 class VirtualHsm extends Hsm {
+  /// Long-term shared vending master key. In real hardware this
+  /// would live behind a secure boundary; here it sits in process
+  /// memory.
   final VendingKey vendingKey;
 
+  /// Wraps a plain-memory [vendingKey].
   VirtualHsm(this.vendingKey);
 
+  /// Constant `"VirtualHsm"`.
   @override
   String get name => 'VirtualHsm';
 
@@ -64,7 +71,7 @@ class VirtualHsm extends Hsm {
   DecoderKey deriveDecoderKeyDkga02({
     required IssuerIdentificationNumber issuerIdentificationNumber,
     required IndividualAccountIdentificationNumber
-    individualAccountIdentificationNumber,
+        individualAccountIdentificationNumber,
     required KeyType keyType,
     required SupplyGroupCode supplyGroupCode,
     required TariffIndex tariffIndex,
@@ -113,12 +120,21 @@ class VirtualHsm extends Hsm {
 /// vending — that integration is OUT OF SCOPE for this algorithm-core
 /// port. All derivation methods throw [NotImplementedException].
 class PrismHsm extends Hsm {
+  /// Prism HSM host (DNS name or IP).
   final String host;
+
+  /// Prism HSM TCP port.
   final int port;
+
+  /// Optional client certificate used to authenticate to the HSM.
   final Uint8List? clientCertificate;
 
+  /// Binds the connection parameters; nothing is opened until a
+  /// derivation call is made (currently all throw
+  /// [NotImplementedException]).
   PrismHsm({required this.host, required this.port, this.clientCertificate});
 
+  /// `"PrismHsm(host=<host>, port=<port>)"`.
   @override
   String get name => 'PrismHsm(host=$host, port=$port)';
 
@@ -134,12 +150,13 @@ class PrismHsm extends Hsm {
   DecoderKey deriveDecoderKeyDkga02({
     required IssuerIdentificationNumber issuerIdentificationNumber,
     required IndividualAccountIdentificationNumber
-    individualAccountIdentificationNumber,
+        individualAccountIdentificationNumber,
     required KeyType keyType,
     required SupplyGroupCode supplyGroupCode,
     required TariffIndex tariffIndex,
     required KeyRevisionNumber keyRevisionNumber,
-  }) => _stub('deriveDecoderKeyDkga02');
+  }) =>
+      _stub('deriveDecoderKeyDkga02');
 
   @override
   DecoderKey deriveDecoderKeyDkga04({
@@ -150,5 +167,6 @@ class PrismHsm extends Hsm {
     required KeyRevisionNumber keyRevisionNumber,
     required EncryptionAlgorithm encryptionAlgorithm,
     required MeterPrimaryAccountNumber meterPan,
-  }) => _stub('deriveDecoderKeyDkga04');
+  }) =>
+      _stub('deriveDecoderKeyDkga04');
 }

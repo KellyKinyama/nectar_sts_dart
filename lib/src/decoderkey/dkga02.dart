@@ -8,7 +8,13 @@ import '../keys/vending_key.dart';
 /// Common surface shared by `DecoderKeyGeneratorAlgorithm02` and
 /// `DecoderKeyGeneratorAlgorithm04`.
 abstract class DecoderKeyGeneratorAlgorithm {
+  /// Short identifier of the algorithm (`"DKGA02"`, `"DKGA04"`).
   String get name;
+
+  /// Runs the derivation and returns the resulting [DecoderKey].
+  ///
+  /// The width of the returned key is 64 bits (STA/DEA) or 128 bits
+  /// (MISTY1 via DKGA-04).
   DecoderKey generate();
 }
 
@@ -57,15 +63,31 @@ Uint8List hexDecode8(String hex) {
 /// "key-derivation" construction — it turns the one-way DES step into
 /// a Davies-Meyer-flavored compression.
 class DecoderKeyGeneratorAlgorithm02 extends DecoderKeyGeneratorAlgorithm {
+  /// Issuer Identification Number (4 or 6 digits).
   final IssuerIdentificationNumber issuerIdentificationNumber;
+
+  /// Individual Account Identification Number (11 or 13 digits).
   final IndividualAccountIdentificationNumber
-  individualAccountIdentificationNumber;
+      individualAccountIdentificationNumber;
+
+  /// Key type (0=DITK, 1=DDTK, 2=DUTK, 3=DCTK).
   final KeyType keyType;
+
+  /// Six-digit supply group code.
   final SupplyGroupCode supplyGroupCode;
+
+  /// Two-digit tariff index.
   final TariffIndex tariffIndex;
+
+  /// One-digit key revision number.
   final KeyRevisionNumber keyRevisionNumber;
+
+  /// 8-byte DES vending key that seeds the derivation.
   final VendingKey vendingKey;
 
+  /// Bundles the meter and issuer parameters DKGA-02 needs to derive
+  /// a decoder key. All arguments are required; call [generate] to
+  /// perform the derivation.
   DecoderKeyGeneratorAlgorithm02({
     required this.keyType,
     required this.supplyGroupCode,
@@ -76,9 +98,12 @@ class DecoderKeyGeneratorAlgorithm02 extends DecoderKeyGeneratorAlgorithm {
     required this.vendingKey,
   });
 
+  /// Returns `"DKGA02"`.
   @override
   String get name => 'DKGA02';
 
+  /// Runs the DKGA-02 derivation and returns the resulting 64-bit
+  /// [DecoderKey].
   @override
   DecoderKey generate() {
     final panBlock = PrimaryAccountNumberBlock(

@@ -22,6 +22,8 @@ import 'encryption_algorithm.dart';
 ///   throws `NotImplementedException`. We provide a real DES decrypt
 ///   because the Dart port has no reason to omit it.
 class DataEncryptionAlgorithm extends EncryptionAlgorithm {
+  /// Constructs the EA09 (Data Encryption Algorithm / single-DES)
+  /// cipher.
   DataEncryptionAlgorithm() : super(EncryptionAlgorithmCode.dea);
 
   @override
@@ -46,6 +48,7 @@ class DataEncryptionAlgorithm extends EncryptionAlgorithm {
   Uint8List encryptBytes(List<int> key, List<int> input) =>
       _desEcbEncrypt(key, input);
 
+  /// Public byte-form DES-ECB decrypt used by DKGA-02.
   Uint8List decryptBytes(List<int> key, List<int> input) =>
       _desEcbDecrypt(key, input);
 }

@@ -7,9 +7,15 @@ import '../token/token.dart';
 /// behaviour is the 66-bit transposition (which is identical for every
 /// class) and EA07 encryption (which any class may delegate to).
 abstract class TokenGenerator<T extends Token> {
+  /// Decoder key the token will be encrypted / signed under.
   final DecoderKey decoderKey;
+
+  /// Encryption algorithm used for the encrypt phase (EA07 STA / EA11
+  /// MISTY1 / no-op for Class 1).
   final EncryptionAlgorithm encryptionAlgorithm;
 
+  /// Binds [decoderKey] and [encryptionAlgorithm]; subclass-specific
+  /// generators forward through `super(...)`.
   TokenGenerator(this.decoderKey, this.encryptionAlgorithm);
 
   /// Build the 64-bit decrypted data block for the token. Class

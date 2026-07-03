@@ -16,16 +16,27 @@ sealed class DecodeResult {
   const DecodeResult();
 }
 
+/// Success arm of a [DecodeResult].
 class DecodeAccepted extends DecodeResult {
+  /// The fully-rehydrated token returned to the caller.
   final Token token;
+
+  /// Wraps a successfully decoded [token].
   const DecodeAccepted(this.token);
 }
 
+/// Failure arm of a [DecodeResult].
 class DecodeFailure extends DecodeResult {
+  /// The structured [StsError] that terminated the decode.
   final StsError error;
+
+  /// Short human-readable reason (safe for logs / HTTP body).
   final String reason;
+
+  /// Wraps a decode failure with its [error] and [reason].
   const DecodeFailure(this.error, this.reason);
 
+  /// Returns `"DecodeFailure(<reason>)"`.
   @override
   String toString() => 'DecodeFailure($reason)';
 }
@@ -38,11 +49,19 @@ class DecodeFailure extends DecodeResult {
 /// (InitiateMeterTestOrDisplay 1/2). Class 2 and Class 3 tokens are
 /// rejected with `DecodeFailure(NotImplementedException(...))`.
 class TokenDecoderDispatcher {
+  /// Decoder key used for every class that requires decryption.
   final DecoderKey decoderKey;
+
+  /// Encryption algorithm used for the decrypt phase (STA / MISTY1 /
+  /// ...).
   final EncryptionAlgorithm encryptionAlgorithm;
 
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   TokenDecoderDispatcher(this.decoderKey, this.encryptionAlgorithm);
 
+  /// Untranspose [decimal20], route on the token-class bits and
+  /// return either [DecodeAccepted] with the rehydrated token or
+  /// [DecodeFailure] with a structured error.
   DecodeResult decodeDecimal(String requestID, String decimal20) {
     try {
       final binary66 = TokenTransposition.tokenNoToBinary66(decimal20);
@@ -136,6 +155,8 @@ class TokenDecoderDispatcher {
 /// Convenience for `decodeDecimal` that throws instead of returning
 /// a failure result. Useful for tests and one-shot scripts.
 extension TokenDecoderDispatcherThrowing on TokenDecoderDispatcher {
+  /// Like [TokenDecoderDispatcher.decodeDecimal] but re-throws the
+  /// [StsError] embedded in [DecodeFailure] instead of returning it.
   Token decodeOrThrow(String requestID, String decimal20) {
     final r = decodeDecimal(requestID, decimal20);
     return switch (r) {

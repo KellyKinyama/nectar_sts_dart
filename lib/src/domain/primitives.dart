@@ -21,13 +21,21 @@ class IssuerIdentificationNumber implements _Entity {
   static final _re6 = RegExp(r'^[0-9]{6}$');
   static final _re4zeros = RegExp(r'^0{4}$');
 
+  /// Digit string (`"NNNNNN"` or `"0000"`).
   final String value;
+
+  /// Validates and stores [value].
+  ///
+  /// Accepts either a 6-digit numeric string or the special
+  /// 4-digit `"0000"` marker; anything else throws
+  /// [InvalidIssuerIdentificationNumberException].
   IssuerIdentificationNumber(this.value) {
     if (!_re6.hasMatch(value) && !_re4zeros.hasMatch(value)) {
       throw InvalidIssuerIdentificationNumberException('Invalid IIN: $value');
     }
   }
 
+  /// Human-readable field name (`"Issuer Identification Number"`).
   @override
   String get name => 'Issuer Identification Number';
 }
@@ -44,7 +52,15 @@ class IssuerIdentificationNumber implements _Entity {
 class IndividualAccountIdentificationNumber implements _Entity {
   static final _re = RegExp(r'^([0-9]{11}|[0-9]{13})$');
 
+  /// Digit string (11 or 13 digits).
   final String value;
+
+  /// Validates and stores [value] as-is.
+  ///
+  /// Rejects anything that is not exactly 11 or 13 numeric digits with
+  /// [InvalidIndividualAccountIdentificationNumberException]. Use
+  /// [IndividualAccountIdentificationNumber.fromComponents] when you
+  /// need the trailing Luhn check digit derived automatically.
   IndividualAccountIdentificationNumber(this.value) {
     if (!_re.hasMatch(value)) {
       throw InvalidIndividualAccountIdentificationNumberException(
@@ -85,25 +101,39 @@ class IndividualAccountIdentificationNumber implements _Entity {
     return IndividualAccountIdentificationNumber('$combined$check');
   }
 
+  /// Human-readable field name.
   @override
   String get name => 'Individual Account Identification Number';
 }
 
 /// 0 = DITK, 1 = DDTK, 2 = DUTK, 3 = DCTK.
 class KeyType implements _Entity {
+  /// Integer key-type code in `0..3`.
   final int value;
+
+  /// Validates and stores [value]; values outside `0..3` throw
+  /// [InvalidKeyTypeException].
   KeyType(this.value) {
     if (value < 0 || value > 3) {
       throw InvalidKeyTypeException('Invalid key type: $value');
     }
   }
 
+  /// Human-readable field name.
   @override
   String get name => 'Key Type';
 }
 
+/// Key Revision Number (`1..9`).
+///
+/// Rolls over as issuers rotate the master vending key; presented on
+/// every non-KCT token so the meter can pick the right decoder key.
 class KeyRevisionNumber implements _Entity {
+  /// Integer KRN in `1..9`.
   final int value;
+
+  /// Validates and stores [value]; values outside `1..9` throw
+  /// [InvalidKeyRevisionNumberException].
   KeyRevisionNumber(this.value) {
     if (value < 1 || value > 9) {
       throw InvalidKeyRevisionNumberException(
@@ -112,29 +142,50 @@ class KeyRevisionNumber implements _Entity {
     }
   }
 
+  /// Human-readable field name.
   @override
   String get name => 'Key Revision Number';
 
+  /// Returns the decimal digit as a string.
   @override
   String toString() => '$value';
 }
 
+/// Two-digit tariff index (`"00"`..`"99"`).
+///
+/// Meter-side lookup key that ties a token to a rate table. Stored as
+/// a string to preserve the leading zero.
 class TariffIndex implements _Entity {
   static final _re = RegExp(r'^[0-9]{2}$');
+
+  /// Two-digit numeric string.
   final String value;
+
+  /// Validates and stores [value]; non 2-digit input throws
+  /// [InvalidTariffIndexException].
   TariffIndex(this.value) {
     if (!_re.hasMatch(value)) {
       throw InvalidTariffIndexException('Invalid tariff index: $value');
     }
   }
 
+  /// Human-readable field name.
   @override
   String get name => 'Tariff Index';
 }
 
+/// Six-digit Supply Group Code (`"NNNNNN"`).
+///
+/// Identifies the utility supply zone; part of the [ControlBlock] used
+/// during decoder-key derivation.
 class SupplyGroupCode implements _Entity {
   static final _re = RegExp(r'^[0-9]{6}$');
+
+  /// Six-digit numeric string.
   final String value;
+
+  /// Validates and stores [value]; non 6-digit input throws
+  /// [InvalidSupplyGroupCodeException].
   SupplyGroupCode(this.value) {
     if (!_re.hasMatch(value)) {
       throw InvalidSupplyGroupCodeException(
@@ -143,6 +194,7 @@ class SupplyGroupCode implements _Entity {
     }
   }
 
+  /// Human-readable field name.
   @override
   String get name => 'Supply Group Code';
 }
@@ -158,11 +210,19 @@ class SupplyGroupCode implements _Entity {
 ///   - then 6 'F' nibbles of padding (the `maximumPhasePowerUnbalanceLimit`
 ///     field, hard-coded to all-ones in the Nectar code).
 class ControlBlock implements _Entity {
+  /// Key type (drives the DKGA branch).
   final KeyType keyType;
+
+  /// Six-digit supply group code.
   final SupplyGroupCode supplyGroupCode;
+
+  /// Two-digit tariff index.
   final TariffIndex tariffIndex;
+
+  /// One-digit key revision number.
   final KeyRevisionNumber keyRevisionNumber;
 
+  /// Bundles the four fields that make up the DKGA control block.
   ControlBlock({
     required this.keyType,
     required this.supplyGroupCode,
@@ -170,10 +230,13 @@ class ControlBlock implements _Entity {
     required this.keyRevisionNumber,
   });
 
+  /// The concatenated 16-hex-digit control block string documented on
+  /// the class.
   String get value =>
       '${keyType.value}${supplyGroupCode.value}${tariffIndex.value}'
       '${keyRevisionNumber.value}FFFFFF';
 
+  /// Human-readable field name.
   @override
   String get name => 'ControlBlock';
 }
@@ -188,17 +251,28 @@ class ControlBlock implements _Entity {
 /// replaced by zeros — the meter-specific bits are stripped because the
 /// derived key isn't tied to a single meter.
 class PrimaryAccountNumberBlock implements _Entity {
+  /// IIN portion — 6 or 4 digits.
   final IssuerIdentificationNumber issuerIdentificationNumber;
+
+  /// IAIN portion — 11 or 13 digits.
   final IndividualAccountIdentificationNumber
-  individualAccountIdentificationNumber;
+      individualAccountIdentificationNumber;
+
+  /// Key type; drives whether the IAIN is zeroed (KT == 3).
   final KeyType keyType;
 
+  /// Bundles the fields that make up the DKGA PAN block.
   PrimaryAccountNumberBlock({
     required this.issuerIdentificationNumber,
     required this.individualAccountIdentificationNumber,
     required this.keyType,
   });
 
+  /// The concatenated 16-hex-digit PAN block string documented on the
+  /// class.
+  ///
+  /// Throws [InvalidPrimaryAccountNumberBlockComponentsException] when
+  /// [issuerIdentificationNumber] has a length other than 4 or 6.
   String get value {
     final iin = issuerIdentificationNumber.value;
     final iain = individualAccountIdentificationNumber.value;
@@ -222,6 +296,7 @@ class PrimaryAccountNumberBlock implements _Entity {
     );
   }
 
+  /// Human-readable field name.
   @override
   String get name => 'Primary Account Number Block';
 }
@@ -251,12 +326,25 @@ enum MeterPanValidation { validate, skip }
 class MeterPrimaryAccountNumber implements _Entity {
   static const _legacyIin = '600727';
 
+  /// IIN portion of the MeterPAN.
   final IssuerIdentificationNumber issuerIdentificationNumber;
+
+  /// IAIN portion of the MeterPAN.
   final IndividualAccountIdentificationNumber
-  individualAccountIdentificationNumber;
+      individualAccountIdentificationNumber;
+
+  /// Nectar-variant Luhn check digit appended to `IIN || IAIN`.
   late final int checkDigit;
+
+  /// The full 18-digit MeterPAN string.
   late final String meterPanValue;
 
+  /// Builds a MeterPAN from an already-validated IIN + IAIN pair.
+  ///
+  /// Enforces `iin.length + iain.length == 17` and the STS constraint
+  /// that a 13-digit IAIN pairs with the `"0000"` IIN. Throws
+  /// [InvalidMeterPanComponentsException] or
+  /// [InvalidMeterPrimaryAccountNumberException] on violation.
   MeterPrimaryAccountNumber({
     required this.issuerIdentificationNumber,
     required this.individualAccountIdentificationNumber,
@@ -358,6 +446,7 @@ class MeterPrimaryAccountNumber implements _Entity {
     return result;
   }
 
+  /// Human-readable field name.
   @override
   String get name => 'MeterPAN';
 }

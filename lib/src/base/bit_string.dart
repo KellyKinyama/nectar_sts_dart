@@ -11,34 +11,63 @@ import 'nibble.dart';
 ///
 /// Direct port of `domain/base/BitString.java`.
 class BitString implements Comparable<BitString> {
+  /// [compareTo] result meaning "equal".
   static const int sameCmp = 0;
+
+  /// [compareTo] result meaning "less than".
   static const int lessThanCmp = -1;
+
+  /// [compareTo] result meaning "greater than".
   static const int greaterThanCmp = 1;
 
+  /// Maximum bit-length a single [BitString] may hold (64, i.e. one
+  /// Dart VM `int`).
   static const int maxNoBits = 64;
 
   int _value = 0;
   int _length = maxNoBits;
 
+  /// Creates an empty [BitString] of length [maxNoBits] with value `0`.
   BitString() {
     _length = maxNoBits;
   }
 
+  /// Creates a [BitString] from a raw integer value.
+  ///
+  /// [value] holds the bit pattern (LSB-first). If [length] is omitted
+  /// the field defaults to the maximum [maxNoBits] width. Callers that
+  /// need the value re-emitted with leading zeros should pass the
+  /// intended [length] explicitly.
   BitString.fromValue(int value, [int? length])
-    : _value = value,
-      _length = length ?? maxNoBits;
+      : _value = value,
+        _length = length ?? maxNoBits;
 
+  /// Creates a [BitString] by parsing a `'0'`/`'1'` string.
+  ///
+  /// The resulting length equals `bits.length`. Throws
+  /// [InvalidBitStringException] if [bits] is empty, longer than 64
+  /// characters, or contains anything other than `'0'`/`'1'`.
   BitString.fromBinary(String bits) {
     setValueFromString(bits);
     _length = bits.length;
   }
 
+  /// The raw underlying value (bits packed LSB-first).
   int get value => _value;
+
+  /// Replaces the raw underlying value without touching [length].
   set value(int v) => _value = v;
 
+  /// Number of significant bits in this field (1..[maxNoBits]).
   int get length => _length;
+
+  /// Overrides the significant bit count without touching [value].
   set length(int n) => _length = n;
 
+  /// Parses a `'0'`/`'1'` string and stores it in [value] (LSB-first).
+  ///
+  /// Length must be 1..64. Throws [InvalidBitStringException] on empty
+  /// input, over-length input, or non-binary characters.
   void setValueFromString(String bits) {
     if (bits.isEmpty || bits.length > 64) {
       throw const InvalidBitStringException('Invalid bitstring length');
@@ -52,6 +81,11 @@ class BitString implements Comparable<BitString> {
     _value = int.parse(bits, radix: 2);
   }
 
+  /// Numeric comparison, matching Java `BitString.compareTo`.
+  ///
+  /// Throws [IllegalComparisonError] when the two operands are not the
+  /// same [length] — the comparison is only meaningful between fields
+  /// of identical width.
   @override
   int compareTo(BitString other) {
     if (_length != other._length) {
@@ -118,18 +152,21 @@ class BitString implements Comparable<BitString> {
     //       long mask = (allOnes << (64 - noOfBits)) >>> (64 - startIndex - noOfBits);
     //       long extracted = (value & mask) << (length - (startIndex + noOfBits)) >>> (length - noOfBits);
     final allOnes = -1;
-    final mask =
-        (allOnes << (maxNoBits - noOfBits)).toUnsigned(64) >>>
+    final mask = (allOnes << (maxNoBits - noOfBits)).toUnsigned(64) >>>
         (maxNoBits - startIndex - noOfBits);
     final extracted =
         ((_value & mask) << (_length - (startIndex + noOfBits))).toUnsigned(
-          64,
-        ) >>>
-        (_length - noOfBits);
+              64,
+            ) >>>
+            (_length - noOfBits);
     final out = BitString.fromValue(extracted, noOfBits);
     return out;
   }
 
+  /// Extracts the 4-bit nibble at [nibblePosition] (0-based, LSB-first).
+  ///
+  /// Throws [NibbleOutOfRangeException] when [nibblePosition] does not
+  /// address one of the `length ~/ 4` nibbles in this field.
   Nibble getNibble(int nibblePosition) {
     const sizeOfNibble = 4;
     final noOfNibbles = _length ~/ sizeOfNibble;
@@ -141,6 +178,10 @@ class BitString implements Comparable<BitString> {
     return Nibble.fromBitString(extracted);
   }
 
+  /// Overwrites the 4-bit nibble at [nibblePosition] with [substitute].
+  ///
+  /// Throws [NibbleOutOfRangeException] when [nibblePosition] falls
+  /// outside the `length ~/ 4` nibble slots.
   void setNibble(int nibblePosition, Nibble substitute) {
     const sizeOfNibble = 4;
     final noOfNibbles = _length ~/ sizeOfNibble;
@@ -152,6 +193,7 @@ class BitString implements Comparable<BitString> {
     setBitsRangeChars(startIndex, endIndex, substitute.getCharArray());
   }
 
+  /// Returns the single bit at LSB-indexed [position] as a [Bit].
   Bit getBit(int position) {
     final mask = (1 << position);
     final bit = (_value & mask) >>> position;
@@ -167,14 +209,20 @@ class BitString implements Comparable<BitString> {
     }
   }
 
+  /// Sets the bit at LSB-indexed [position] to `1`.
   void setBit(int position) {
     _value |= (1 << position);
   }
 
+  /// Clears the bit at LSB-indexed [position] to `0`.
   void clearBit(int position) {
     _value &= ~(1 << position);
   }
 
+  /// Sets every bit in the inclusive range `[fromIndex, toIndex]` to `1`.
+  ///
+  /// Throws [InvalidRangeException] when [toIndex] is less than
+  /// [fromIndex] or the span exceeds [maxNoBits].
   void setBitsRange(int fromIndex, int toIndex) {
     if (toIndex < fromIndex || (fromIndex - toIndex).abs() > maxNoBits) {
       throw const InvalidRangeException('Invalid range for setBitsRange');
@@ -185,6 +233,11 @@ class BitString implements Comparable<BitString> {
     }
   }
 
+  /// Clears every bit in the inclusive range `[fromIndex, toIndex]` to
+  /// `0`.
+  ///
+  /// Throws [InvalidRangeException] when [toIndex] is less than
+  /// [fromIndex] or the span exceeds [maxNoBits].
   void clearBitRange(int fromIndex, int toIndex) {
     if (toIndex < fromIndex || (fromIndex - toIndex).abs() > maxNoBits) {
       throw const InvalidRangeException('Invalid range for clearBitRange');
@@ -195,6 +248,12 @@ class BitString implements Comparable<BitString> {
     }
   }
 
+  /// Rotates [bitString] by [shiftSteps] positions in the given
+  /// [direction], returning a new [BitString] of the same [length].
+  ///
+  /// For 64-bit fields the rotation uses fast bitwise math; shorter
+  /// fields use the general per-bit path. Used by the STS Standard
+  /// Transfer Algorithm and DKGA rotation stages.
   static BitString rotate(
     BitString bitString,
     RotateDirection direction,
@@ -254,9 +313,11 @@ class BitString implements Comparable<BitString> {
     return ((lo >>> n) | (lo << (64 - n))).toUnsigned(64);
   }
 
+  /// Returns the value as an unpadded base-2 string (no leading zeros).
   @override
   String toString() => _value.toRadixString(2);
 
+  /// Returns the value as an unpadded lower-case base-16 string.
   String toHexString() => _value.toRadixString(16);
 
   /// Returns the bits as a List of '0' / '1' character codes,
@@ -279,6 +340,7 @@ class BitString implements Comparable<BitString> {
     return flipped;
   }
 
+  /// Returns an independent copy with the same [value] and [length].
   BitString clone() => BitString.fromValue(_value, _length);
 
   /// MSB-first padded binary string (used by formatters that mirror
@@ -293,4 +355,5 @@ class BitString implements Comparable<BitString> {
   }
 }
 
+/// Rotation direction for [BitString.rotate].
 enum RotateDirection { left, right }

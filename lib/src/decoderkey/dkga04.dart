@@ -46,15 +46,36 @@ import 'dkga02.dart' show DecoderKeyGeneratorAlgorithm;
 ///              implementation referenced by IEC 62055-41:2014.
 ///   - MISTY1 : first 16 bytes of the HMAC, as-is.
 class DecoderKeyGeneratorAlgorithm04 extends DecoderKeyGeneratorAlgorithm {
+  /// STS reference base date (drives the `bd` field of the data block).
   final BaseDate baseDate;
+
+  /// Two-digit tariff index.
   final TariffIndex tariffIndex;
+
+  /// Six-digit supply group code.
   final SupplyGroupCode supplyGroupCode;
+
+  /// Key type (0=DITK, 1=DDTK, 2=DUTK, 3=DCTK).
   final KeyType keyType;
+
+  /// One-digit key revision number.
   final KeyRevisionNumber keyRevisionNumber;
+
+  /// Chosen block cipher (STA → 64-bit key, MISTY1 → 128-bit key).
   final EncryptionAlgorithm encryptionAlgorithm;
+
+  /// Full 18-digit MeterPAN of the target meter.
   final MeterPrimaryAccountNumber meterPan;
+
+  /// 20-byte (160-bit) vending key used as the HMAC-SHA-256 key.
   final VendingKey vendingKey;
 
+  /// Bundles the parameters DKGA-04 needs to derive a decoder key.
+  ///
+  /// All arguments are required. The [vendingKey] must be exactly 20
+  /// bytes and its length must be consistent with
+  /// [encryptionAlgorithm]; otherwise [generate] throws
+  /// [EncryptionAlgorithmVendingKeyLengthMismatchException].
   DecoderKeyGeneratorAlgorithm04({
     required this.baseDate,
     required this.tariffIndex,
@@ -71,6 +92,12 @@ class DecoderKeyGeneratorAlgorithm04 extends DecoderKeyGeneratorAlgorithm {
   @override
   String get name => 'DKGA04';
 
+  /// Runs the DKGA-04 derivation and returns the resulting 64-bit
+  /// (STA) or 128-bit (MISTY1) [DecoderKey].
+  ///
+  /// Throws [EncryptionAlgorithmVendingKeyLengthMismatchException] if
+  /// [vendingKey] is not exactly 20 bytes or the chosen
+  /// [encryptionAlgorithm] is neither STA nor MISTY1.
   @override
   DecoderKey generate() {
     final int decoderKeyLengthMarker;

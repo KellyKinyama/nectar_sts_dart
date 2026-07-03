@@ -37,11 +37,22 @@ sealed class ApplyResult {
 /// are unit-agnostic numeric amounts (kWh for electricity, m³ for
 /// water/gas) named for backwards compatibility.
 class ApplyAccepted extends ApplyResult {
+  /// Amount credited (numeric — kWh / m³ depending on commodity).
   final double amountKwh;
+
+  /// Balance for [commodity] after the credit was applied.
   final double newBalanceKwh;
+
+  /// TID (minutes-since-base-date) of the accepted token.
   final int tidMinutes;
+
+  /// Wall-clock time the token was issued by the vending back-office.
   final DateTime issuedAt;
+
+  /// `'electricity'`, `'water'`, or `'gas'`.
   final String commodity;
+
+  /// Builds a successful credit-token result.
   const ApplyAccepted({
     required this.amountKwh,
     required this.newBalanceKwh,
@@ -55,30 +66,48 @@ class ApplyAccepted extends ApplyResult {
 /// Balance is unchanged. Real meters track a TID window; this sim
 /// stores the full set for simplicity.
 class ApplyReplay extends ApplyResult {
+  /// TID of the already-seen token.
   final int tidMinutes;
+
+  /// Builds a replay-detection result for the given [tidMinutes].
   const ApplyReplay(this.tidMinutes);
 }
 
 /// The token decoded cleanly but is not a credit-bearing class
 /// (e.g. Class 1 meter-test). Logged but the balance is unchanged.
 class ApplyNonCredit extends ApplyResult {
+  /// Type tag of the accepted-but-not-credit-bearing token.
   final String tokenType;
+
+  /// Builds a non-credit acknowledgement for [tokenType].
   const ApplyNonCredit(this.tokenType);
 }
 
 /// Decode failed — bad CRC, wrong key, non-numeric token, etc.
 class ApplyRejected extends ApplyResult {
+  /// Human-readable rejection reason (safe for logs).
   final String reason;
+
+  /// Builds a rejection result carrying [reason].
   const ApplyRejected(this.reason);
 }
 
 /// A 1st Section Decoder Key Change Token was accepted and stashed,
 /// waiting for the matching 2nd section before rotation happens.
 class ApplyKeyChange1stStaged extends ApplyResult {
+  /// High nibble of the incoming new KEN.
   final int keyExpiryNumberHighOrder;
+
+  /// Incoming new KRN.
   final int newKeyRevisionNumber;
+
+  /// Incoming new key type.
   final int newKeyType;
+
+  /// Rollover flag from the 1st-section token.
   final bool rolloverKeyChange;
+
+  /// Builds a 1st-section staged result.
   const ApplyKeyChange1stStaged({
     required this.keyExpiryNumberHighOrder,
     required this.newKeyRevisionNumber,
@@ -90,8 +119,13 @@ class ApplyKeyChange1stStaged extends ApplyResult {
 /// A 2nd Section Decoder Key Change Token was accepted and stashed,
 /// waiting for the matching 1st section before rotation happens.
 class ApplyKeyChange2ndStaged extends ApplyResult {
+  /// Low nibble of the incoming new KEN.
   final int keyExpiryNumberLowOrder;
+
+  /// Incoming new tariff index.
   final String newTariffIndex;
+
+  /// Builds a 2nd-section staged result.
   const ApplyKeyChange2ndStaged({
     required this.keyExpiryNumberLowOrder,
     required this.newTariffIndex,
@@ -101,30 +135,47 @@ class ApplyKeyChange2ndStaged extends ApplyResult {
 /// A 3rd Section Decoder Key Change Token (MISTY1) was accepted and
 /// stashed. Rotation waits for all four sections to arrive.
 class ApplyKeyChange3rdStaged extends ApplyResult {
+  /// Low 12 bits of the incoming SGC.
   final int supplyGroupCodeLowOrder;
+
+  /// Builds a 3rd-section staged result.
   const ApplyKeyChange3rdStaged({required this.supplyGroupCodeLowOrder});
 }
 
 /// A 4th Section Decoder Key Change Token (MISTY1) was accepted and
 /// stashed. Rotation waits for all four sections to arrive.
 class ApplyKeyChange4thStaged extends ApplyResult {
+  /// High 12 bits of the incoming SGC.
   final int supplyGroupCodeHighOrder;
+
+  /// Builds a 4th-section staged result.
   const ApplyKeyChange4thStaged({required this.supplyGroupCodeHighOrder});
 }
 
 /// Both halves of a decoder-key change have arrived; the meter
 /// rotated to the new key. Subsequent tokens are decoded under it.
 class ApplyKeyRotated extends ApplyResult {
+  /// Newly-active KRN.
   final int newKeyRevisionNumber;
+
+  /// Newly-active key type.
   final int newKeyType;
+
+  /// Full 8-bit newly-active KEN (KENHO<<4 | KENLO).
   final int keyExpiryNumber;
+
+  /// Newly-active tariff index.
   final String newTariffIndex;
+
+  /// Rollover flag from the 1st-section token.
   final bool rolloverKeyChange;
 
   /// New 6-digit Supply Group Code after a MISTY1 4-section rotation
   /// (assembled from SGCHO|SGCLO). `null` for STA 2-section rotations,
   /// which don't change the SGC.
   final String? newSupplyGroupCode;
+
+  /// Builds a completed-rotation result.
   const ApplyKeyRotated({
     required this.newKeyRevisionNumber,
     required this.newKeyType,
@@ -139,15 +190,23 @@ class ApplyKeyRotated extends ApplyResult {
 /// the meter's current state (e.g. a 2nd section arrived without a
 /// matching 1st section already staged, or vice-versa).
 class ApplyKeyChangeRejected extends ApplyResult {
+  /// Human-readable rejection reason.
   final String reason;
+
+  /// Builds a KCT-rejection result.
   const ApplyKeyChangeRejected(this.reason);
 }
 
 /// A management token (Class 2 register-payload subclass) was
 /// already-seen by TID. Meter state is unchanged.
 class ApplyManagementReplay extends ApplyResult {
+  /// Type tag of the already-seen management token.
   final String tokenType;
+
+  /// TID of the already-seen token.
   final int tidMinutes;
+
+  /// Builds a management-replay result.
   const ApplyManagementReplay({
     required this.tokenType,
     required this.tidMinutes,
@@ -157,8 +216,13 @@ class ApplyManagementReplay extends ApplyResult {
 /// `SetMaximumPowerLimit_20` was accepted and the meter's MPL was
 /// updated.
 class ApplyMaximumPowerLimitSet extends ApplyResult {
+  /// Newly-active MPL value (16-bit unsigned).
   final int maximumPowerLimit;
+
+  /// TID of the applied token.
   final int tidMinutes;
+
+  /// Builds a MPL-updated result.
   const ApplyMaximumPowerLimitSet({
     required this.maximumPowerLimit,
     required this.tidMinutes,
@@ -167,9 +231,16 @@ class ApplyMaximumPowerLimitSet extends ApplyResult {
 
 /// `ClearCredit_21` was accepted; balance was reset to 0.
 class ApplyCreditCleared extends ApplyResult {
+  /// Balance the meter held immediately before the reset.
   final double previousBalanceKwh;
+
+  /// Value from the token's 16-bit register field (commonly 0).
   final int register;
+
+  /// TID of the applied token.
   final int tidMinutes;
+
+  /// Builds a credit-cleared result.
   const ApplyCreditCleared({
     required this.previousBalanceKwh,
     required this.register,
@@ -180,8 +251,13 @@ class ApplyCreditCleared extends ApplyResult {
 /// `SetTariffRate_22` was accepted and the active tariff rate was
 /// updated.
 class ApplyTariffRateSet extends ApplyResult {
+  /// Newly-active tariff rate (16-bit unsigned).
   final int tariffRate;
+
+  /// TID of the applied token.
   final int tidMinutes;
+
+  /// Builds a tariff-rate-updated result.
   const ApplyTariffRateSet({
     required this.tariffRate,
     required this.tidMinutes,
@@ -191,15 +267,23 @@ class ApplyTariffRateSet extends ApplyResult {
 /// `ClearTamperCondition_25` was accepted; any latched tamper flags
 /// have been cleared.
 class ApplyTamperConditionCleared extends ApplyResult {
+  /// TID of the applied token.
   final int tidMinutes;
+
+  /// Builds a tamper-cleared result.
   const ApplyTamperConditionCleared({required this.tidMinutes});
 }
 
 /// `SetMaximumPhasePowerUnbalanceLimit_26` was accepted and the
 /// meter's MPPUL setting was updated.
 class ApplyMaximumPhasePowerUnbalanceLimitSet extends ApplyResult {
+  /// Newly-active MPPUL value (16-bit unsigned).
   final int maximumPhasePowerUnbalanceLimit;
+
+  /// TID of the applied token.
   final int tidMinutes;
+
+  /// Builds a MPPUL-updated result.
   const ApplyMaximumPhasePowerUnbalanceLimitSet({
     required this.maximumPhasePowerUnbalanceLimit,
     required this.tidMinutes,
@@ -208,13 +292,25 @@ class ApplyMaximumPhasePowerUnbalanceLimitSet extends ApplyResult {
 
 /// Persisted record of one successfully-applied credit token.
 class AppliedTokenRecord {
+  /// 20-digit token string as displayed to the customer.
   final String tokenNo;
+
+  /// Credit amount from the token (kWh / m³).
   final double amountKwh;
+
+  /// TID (minutes-since-base-date) for replay protection.
   final int tidMinutes;
+
+  /// Wall-clock time the token was issued by the back-office.
   final DateTime issuedAt;
+
+  /// Wall-clock time this record was written to meter state.
   final DateTime appliedAt;
+
+  /// `'electricity'`, `'water'`, or `'gas'`.
   final String commodity;
 
+  /// Builds an accepted-token audit record.
   const AppliedTokenRecord({
     required this.tokenNo,
     required this.amountKwh,
@@ -224,15 +320,19 @@ class AppliedTokenRecord {
     this.commodity = 'electricity',
   });
 
+  /// Serialises this record to a JSON-friendly map. Elides
+  /// `commodity` when it's the default `'electricity'`.
   Map<String, dynamic> toJson() => {
-    'token_no': tokenNo,
-    'amount_kwh': amountKwh,
-    'tid_minutes': tidMinutes,
-    'issued_at': issuedAt.toUtc().toIso8601String(),
-    'applied_at': appliedAt.toUtc().toIso8601String(),
-    if (commodity != 'electricity') 'commodity': commodity,
-  };
+        'token_no': tokenNo,
+        'amount_kwh': amountKwh,
+        'tid_minutes': tidMinutes,
+        'issued_at': issuedAt.toUtc().toIso8601String(),
+        'applied_at': appliedAt.toUtc().toIso8601String(),
+        if (commodity != 'electricity') 'commodity': commodity,
+      };
 
+  /// Rebuilds an [AppliedTokenRecord] from a JSON map produced by
+  /// [toJson].
   factory AppliedTokenRecord.fromJson(Map<String, dynamic> j) =>
       AppliedTokenRecord(
         tokenNo: j['token_no'] as String,
@@ -247,13 +347,25 @@ class AppliedTokenRecord {
 /// Persisted record of one successfully-applied Class 2 register
 /// management token. Used for TID-based replay protection.
 class AppliedManagementTokenRecord {
+  /// 20-digit token string as displayed to the operator.
   final String tokenNo;
+
+  /// Type tag (e.g. `'SetMaximumPowerLimit_20'`).
   final String tokenType;
+
+  /// TID for replay protection.
   final int tidMinutes;
+
+  /// 16-bit payload register value from the token.
   final int registerValue;
+
+  /// Wall-clock time the token was issued by the back-office.
   final DateTime issuedAt;
+
+  /// Wall-clock time this record was written to meter state.
   final DateTime appliedAt;
 
+  /// Builds a management-token audit record.
   const AppliedManagementTokenRecord({
     required this.tokenNo,
     required this.tokenType,
@@ -263,15 +375,18 @@ class AppliedManagementTokenRecord {
     required this.appliedAt,
   });
 
+  /// Serialises this record to a JSON-friendly map.
   Map<String, dynamic> toJson() => {
-    'token_no': tokenNo,
-    'token_type': tokenType,
-    'tid_minutes': tidMinutes,
-    'register_value': registerValue,
-    'issued_at': issuedAt.toUtc().toIso8601String(),
-    'applied_at': appliedAt.toUtc().toIso8601String(),
-  };
+        'token_no': tokenNo,
+        'token_type': tokenType,
+        'tid_minutes': tidMinutes,
+        'register_value': registerValue,
+        'issued_at': issuedAt.toUtc().toIso8601String(),
+        'applied_at': appliedAt.toUtc().toIso8601String(),
+      };
 
+  /// Rebuilds an [AppliedManagementTokenRecord] from a JSON map
+  /// produced by [toJson].
   factory AppliedManagementTokenRecord.fromJson(Map<String, dynamic> j) =>
       AppliedManagementTokenRecord(
         tokenNo: j['token_no'] as String,
@@ -289,15 +404,32 @@ class AppliedManagementTokenRecord {
 /// so the JSON file is self-documenting and a stolen meter sim can
 /// be paired back to its vending key.
 class MeterIdentity {
+  /// 6-digit Issuer Identification Number.
   final String issuerIdentificationNumber;
+
+  /// 11-digit Individual Account Identification Number / Decoder
+  /// Reference Number.
   final String individualAccountIdentificationNumber;
+
+  /// Numeric key-type code.
   final int keyType;
+
+  /// 6-digit Supply Group Code.
   final String supplyGroupCode;
+
+  /// 2-digit tariff index string.
   final String tariffIndex;
+
+  /// Integer key revision number.
   final int keyRevisionNumber;
+
+  /// `'02'` (DKGA-02) or `'04'` (DKGA-04). Defaults to `'02'`.
   final String decoderKeyGenerationAlgorithm; // '02' or '04'
+
+  /// Base-date string; only meaningful for DKGA-04.
   final String? baseDate; // only meaningful for DKGA-04
 
+  /// Builds a personalization descriptor.
   const MeterIdentity({
     required this.issuerIdentificationNumber,
     required this.individualAccountIdentificationNumber,
@@ -309,35 +441,46 @@ class MeterIdentity {
     this.baseDate,
   });
 
+  /// Serialises this identity to a JSON-friendly map. Uses the same
+  /// key names as the vending-service param map.
   Map<String, dynamic> toJson() => {
-    'issuer_identification_no': issuerIdentificationNumber,
-    'decoder_reference_number': individualAccountIdentificationNumber,
-    'key_type': keyType,
-    'supply_group_code': supplyGroupCode,
-    'tariff_index': tariffIndex,
-    'key_revision_no': keyRevisionNumber,
-    'decoder_key_generation_algorithm': decoderKeyGenerationAlgorithm,
-    if (baseDate != null) 'base_date': baseDate,
-  };
+        'issuer_identification_no': issuerIdentificationNumber,
+        'decoder_reference_number': individualAccountIdentificationNumber,
+        'key_type': keyType,
+        'supply_group_code': supplyGroupCode,
+        'tariff_index': tariffIndex,
+        'key_revision_no': keyRevisionNumber,
+        'decoder_key_generation_algorithm': decoderKeyGenerationAlgorithm,
+        if (baseDate != null) 'base_date': baseDate,
+      };
 
+  /// Rebuilds a [MeterIdentity] from a JSON map produced by [toJson].
   factory MeterIdentity.fromJson(Map<String, dynamic> j) => MeterIdentity(
-    issuerIdentificationNumber: j['issuer_identification_no'] as String,
-    individualAccountIdentificationNumber:
-        j['decoder_reference_number'] as String,
-    keyType: (j['key_type'] as num).toInt(),
-    supplyGroupCode: j['supply_group_code'] as String,
-    tariffIndex: j['tariff_index'] as String,
-    keyRevisionNumber: (j['key_revision_no'] as num).toInt(),
-    decoderKeyGenerationAlgorithm:
-        (j['decoder_key_generation_algorithm'] as String?) ?? '02',
-    baseDate: j['base_date'] as String?,
-  );
+        issuerIdentificationNumber: j['issuer_identification_no'] as String,
+        individualAccountIdentificationNumber:
+            j['decoder_reference_number'] as String,
+        keyType: (j['key_type'] as num).toInt(),
+        supplyGroupCode: j['supply_group_code'] as String,
+        tariffIndex: j['tariff_index'] as String,
+        keyRevisionNumber: (j['key_revision_no'] as num).toInt(),
+        decoderKeyGenerationAlgorithm:
+            (j['decoder_key_generation_algorithm'] as String?) ?? '02',
+        baseDate: j['base_date'] as String?,
+      );
 }
 
 class VirtualMeter {
+  /// Personalization descriptor (IIN / IAIN / SGC / TI / KRN / DKGA).
   MeterIdentity identity;
+
+  /// Currently-active decoder key (raw bytes).
   Uint8List decoderKeyBytes;
+
+  /// Currently-active encryption algorithm name (`'sta'`, `'dea'`, or
+  /// `'misty1'`).
   final String encryptionAlgorithmName; // 'sta' | 'dea' | 'misty1'
+
+  /// Current electricity credit balance in kWh.
   double balanceKwh;
 
   /// Current water-credit balance in the meter's water units
@@ -349,8 +492,15 @@ class VirtualMeter {
   /// m³). Incremented by accepted [TransferGasCreditToken]s.
   double balanceGas;
 
+  /// Audit log of accepted credit tokens (for replay protection and
+  /// operator inspection).
   final List<AppliedTokenRecord> appliedTokens;
+
+  /// Audit log of accepted Class 2 register-payload management
+  /// tokens.
   final List<AppliedManagementTokenRecord> appliedManagementTokens;
+
+  /// UTC wall-clock time this meter's JSON state was created.
   final DateTime createdAt;
 
   /// Filesystem path the meter was loaded from (or will be saved
@@ -393,9 +543,16 @@ class VirtualMeter {
   PendingKctSection? _pending3rd;
   PendingKctSection? _pending4th;
 
+  /// Currently-staged 1st-section KCT (if any).
   PendingKctSection? get pending1stSection => _pending1st;
+
+  /// Currently-staged 2nd-section KCT (if any).
   PendingKctSection? get pending2ndSection => _pending2nd;
+
+  /// Currently-staged 3rd-section KCT (MISTY1 rotation, if any).
   PendingKctSection? get pending3rdSection => _pending3rd;
+
+  /// Currently-staged 4th-section KCT (MISTY1 rotation, if any).
   PendingKctSection? get pending4thSection => _pending4th;
 
   /// Sim-only: a real meter latches a tamper flag in NVRAM when its
@@ -404,6 +561,9 @@ class VirtualMeter {
   /// [tripTamper] in tests/demos to simulate the sensor firing.
   bool tamperLatched;
 
+  /// Builds a meter directly from raw state. Prefer
+  /// [VirtualMeter.setup] for personalising a fresh meter from a
+  /// vending key.
   VirtualMeter({
     required this.identity,
     required this.decoderKeyBytes,
@@ -426,14 +586,14 @@ class VirtualMeter {
     PendingKctSection? pending2ndSection,
     PendingKctSection? pending3rdSection,
     PendingKctSection? pending4thSection,
-  }) : appliedTokens = appliedTokens ?? <AppliedTokenRecord>[],
-       appliedManagementTokens =
-           appliedManagementTokens ?? <AppliedManagementTokenRecord>[],
-       createdAt = createdAt ?? DateTime.now().toUtc(),
-       _pending1st = pending1stSection,
-       _pending2nd = pending2ndSection,
-       _pending3rd = pending3rdSection,
-       _pending4th = pending4thSection;
+  })  : appliedTokens = appliedTokens ?? <AppliedTokenRecord>[],
+        appliedManagementTokens =
+            appliedManagementTokens ?? <AppliedManagementTokenRecord>[],
+        createdAt = createdAt ?? DateTime.now().toUtc(),
+        _pending1st = pending1stSection,
+        _pending2nd = pending2ndSection,
+        _pending3rd = pending3rdSection,
+        _pending4th = pending4thSection;
 
   /// Sim-only: simulate the meter's tamper sensors firing. Sets the
   /// `tamperLatched` flag, which is cleared only by a successful
@@ -461,8 +621,8 @@ class VirtualMeter {
           ),
           individualAccountIdentificationNumber:
               IndividualAccountIdentificationNumber(
-                identity.individualAccountIdentificationNumber,
-              ),
+            identity.individualAccountIdentificationNumber,
+          ),
           keyType: KeyType(identity.keyType),
           supplyGroupCode: SupplyGroupCode(identity.supplyGroupCode),
           tariffIndex: TariffIndex(identity.tariffIndex),
@@ -487,8 +647,8 @@ class VirtualMeter {
             ),
             individualAccountIdentificationNumber:
                 IndividualAccountIdentificationNumber(
-                  identity.individualAccountIdentificationNumber,
-                ),
+              identity.individualAccountIdentificationNumber,
+            ),
           ),
         );
       default:
@@ -882,37 +1042,42 @@ class VirtualMeter {
 
   // ---- persistence ---------------------------------------------
 
+  /// Serialises this meter to a JSON-friendly map (schema
+  /// `nectar_sts_dart.virtual_meter/v4`).
   Map<String, dynamic> toJson() => {
-    'schema': 'nectar_sts_dart.virtual_meter/v4',
-    'created_at': createdAt.toIso8601String(),
-    'identity': identity.toJson(),
-    'decoder_key_hex': _bytesToHex(decoderKeyBytes),
-    'encryption_algorithm': encryptionAlgorithmName,
-    'balance_kwh': balanceKwh,
-    if (balanceWater != 0.0) 'balance_water': balanceWater,
-    if (balanceGas != 0.0) 'balance_gas': balanceGas,
-    if (keyExpiryNumber != null) 'key_expiry_number': keyExpiryNumber,
-    if (maximumPowerLimit != null) 'maximum_power_limit': maximumPowerLimit,
-    if (maximumPhasePowerUnbalanceLimit != null)
-      'maximum_phase_power_unbalance_limit': maximumPhasePowerUnbalanceLimit,
-    if (tariffRate != null) 'tariff_rate': tariffRate,
-    if (tamperConditionClearedAt != null)
-      'tamper_condition_cleared_at': tamperConditionClearedAt!
-          .toUtc()
-          .toIso8601String(),
-    if (creditClearedAt != null)
-      'credit_cleared_at': creditClearedAt!.toUtc().toIso8601String(),
-    if (tamperLatched) 'tamper_latched': true,
-    if (_pending1st != null) 'pending_1st_section': _pending1st!.toJson(),
-    if (_pending2nd != null) 'pending_2nd_section': _pending2nd!.toJson(),
-    if (_pending3rd != null) 'pending_3rd_section': _pending3rd!.toJson(),
-    if (_pending4th != null) 'pending_4th_section': _pending4th!.toJson(),
-    'applied_tokens': appliedTokens.map((r) => r.toJson()).toList(),
-    'applied_management_tokens': appliedManagementTokens
-        .map((r) => r.toJson())
-        .toList(),
-  };
+        'schema': 'nectar_sts_dart.virtual_meter/v4',
+        'created_at': createdAt.toIso8601String(),
+        'identity': identity.toJson(),
+        'decoder_key_hex': _bytesToHex(decoderKeyBytes),
+        'encryption_algorithm': encryptionAlgorithmName,
+        'balance_kwh': balanceKwh,
+        if (balanceWater != 0.0) 'balance_water': balanceWater,
+        if (balanceGas != 0.0) 'balance_gas': balanceGas,
+        if (keyExpiryNumber != null) 'key_expiry_number': keyExpiryNumber,
+        if (maximumPowerLimit != null) 'maximum_power_limit': maximumPowerLimit,
+        if (maximumPhasePowerUnbalanceLimit != null)
+          'maximum_phase_power_unbalance_limit':
+              maximumPhasePowerUnbalanceLimit,
+        if (tariffRate != null) 'tariff_rate': tariffRate,
+        if (tamperConditionClearedAt != null)
+          'tamper_condition_cleared_at':
+              tamperConditionClearedAt!.toUtc().toIso8601String(),
+        if (creditClearedAt != null)
+          'credit_cleared_at': creditClearedAt!.toUtc().toIso8601String(),
+        if (tamperLatched) 'tamper_latched': true,
+        if (_pending1st != null) 'pending_1st_section': _pending1st!.toJson(),
+        if (_pending2nd != null) 'pending_2nd_section': _pending2nd!.toJson(),
+        if (_pending3rd != null) 'pending_3rd_section': _pending3rd!.toJson(),
+        if (_pending4th != null) 'pending_4th_section': _pending4th!.toJson(),
+        'applied_tokens': appliedTokens.map((r) => r.toJson()).toList(),
+        'applied_management_tokens':
+            appliedManagementTokens.map((r) => r.toJson()).toList(),
+      };
 
+  /// Rebuilds a [VirtualMeter] from a JSON map produced by
+  /// [toJson]. Accepts v1–v4 schemas.
+  ///
+  /// Throws [FormatException] on an unrecognised schema string.
   factory VirtualMeter.fromJson(Map<String, dynamic> j, {String? filePath}) {
     final schema = j['schema'];
     if (schema != null &&
@@ -952,11 +1117,10 @@ class VirtualMeter {
           : null,
       maximumPhasePowerUnbalanceLimit:
           j['maximum_phase_power_unbalance_limit'] is num
-          ? (j['maximum_phase_power_unbalance_limit'] as num).toInt()
-          : null,
-      tariffRate: j['tariff_rate'] is num
-          ? (j['tariff_rate'] as num).toInt()
-          : null,
+              ? (j['maximum_phase_power_unbalance_limit'] as num).toInt()
+              : null,
+      tariffRate:
+          j['tariff_rate'] is num ? (j['tariff_rate'] as num).toInt() : null,
       tamperConditionClearedAt: j['tamper_condition_cleared_at'] is String
           ? DateTime.parse(j['tamper_condition_cleared_at'] as String)
           : null,
@@ -1053,25 +1217,38 @@ String _bytesToHex(Uint8List bytes) {
 /// matching real meter behavior for KCT retries.
 class PendingKctSection {
   // ---- 1st section fields ----
+  /// 1st section: MSB-first 32-bit binary string of NKHO.
   final String? newKeyHighOrderBits; // 32-bit binary string (MSB-first)
+  /// 1st section: high nibble of the new KEN (0..15).
   final int? keyExpiryNumberHighOrder; // 0..15
+  /// 1st section: new KRN (1..9).
   final int? newKeyRevisionNumber; // 1..9
+  /// 1st section: new key type (0..3).
   final int? newKeyType; // 0..3
+  /// 1st section: rollover flag.
   final bool? rolloverKeyChange;
 
   // ---- 2nd section fields ----
+  /// 2nd section: MSB-first 32-bit binary string of NKLO.
   final String? newKeyLowOrderBits; // 32-bit binary string (MSB-first)
+  /// 2nd section: low nibble of the new KEN (0..15).
   final int? keyExpiryNumberLowOrder; // 0..15
+  /// 2nd section: new tariff-index string.
   final String? newTariffIndex; // 2-digit decimal string
 
   // ---- 3rd section fields (MISTY1) ----
+  /// 3rd section: MSB-first 32-bit binary string of NKMO2.
   final String? newKeyMiddleOrder2Bits; // 32-bit binary string (MSB-first)
+  /// 3rd section: low 12 bits of the new SGC.
   final int? supplyGroupCodeLowOrder; // 0..0xFFF (12-bit value)
 
   // ---- 4th section fields (MISTY1) ----
+  /// 4th section: MSB-first 32-bit binary string of NKMO1.
   final String? newKeyMiddleOrder1Bits; // 32-bit binary string (MSB-first)
+  /// 4th section: high 12 bits of the new SGC.
   final int? supplyGroupCodeHighOrder; // 0..0xFFF (12-bit value)
 
+  /// Wall-clock time the section was staged.
   final DateTime stagedAt;
 
   const PendingKctSection._({
@@ -1090,6 +1267,7 @@ class PendingKctSection {
     required this.stagedAt,
   });
 
+  /// Builds a staged 1st-section slot.
   factory PendingKctSection.first({
     required String newKeyHighOrderBits,
     required int keyExpiryNumberHighOrder,
@@ -1097,72 +1275,87 @@ class PendingKctSection {
     required int newKeyType,
     required bool rolloverKeyChange,
     required DateTime stagedAt,
-  }) => PendingKctSection._(
-    newKeyHighOrderBits: newKeyHighOrderBits,
-    keyExpiryNumberHighOrder: keyExpiryNumberHighOrder,
-    newKeyRevisionNumber: newKeyRevisionNumber,
-    newKeyType: newKeyType,
-    rolloverKeyChange: rolloverKeyChange,
-    stagedAt: stagedAt,
-  );
+  }) =>
+      PendingKctSection._(
+        newKeyHighOrderBits: newKeyHighOrderBits,
+        keyExpiryNumberHighOrder: keyExpiryNumberHighOrder,
+        newKeyRevisionNumber: newKeyRevisionNumber,
+        newKeyType: newKeyType,
+        rolloverKeyChange: rolloverKeyChange,
+        stagedAt: stagedAt,
+      );
 
+  /// Builds a staged 2nd-section slot.
   factory PendingKctSection.second({
     required String newKeyLowOrderBits,
     required int keyExpiryNumberLowOrder,
     required String newTariffIndex,
     required DateTime stagedAt,
-  }) => PendingKctSection._(
-    newKeyLowOrderBits: newKeyLowOrderBits,
-    keyExpiryNumberLowOrder: keyExpiryNumberLowOrder,
-    newTariffIndex: newTariffIndex,
-    stagedAt: stagedAt,
-  );
+  }) =>
+      PendingKctSection._(
+        newKeyLowOrderBits: newKeyLowOrderBits,
+        keyExpiryNumberLowOrder: keyExpiryNumberLowOrder,
+        newTariffIndex: newTariffIndex,
+        stagedAt: stagedAt,
+      );
 
+  /// Builds a staged 3rd-section slot (MISTY1 rotation).
   factory PendingKctSection.third({
     required String newKeyMiddleOrder2Bits,
     required int supplyGroupCodeLowOrder,
     required DateTime stagedAt,
-  }) => PendingKctSection._(
-    newKeyMiddleOrder2Bits: newKeyMiddleOrder2Bits,
-    supplyGroupCodeLowOrder: supplyGroupCodeLowOrder,
-    stagedAt: stagedAt,
-  );
+  }) =>
+      PendingKctSection._(
+        newKeyMiddleOrder2Bits: newKeyMiddleOrder2Bits,
+        supplyGroupCodeLowOrder: supplyGroupCodeLowOrder,
+        stagedAt: stagedAt,
+      );
 
+  /// Builds a staged 4th-section slot (MISTY1 rotation).
   factory PendingKctSection.fourth({
     required String newKeyMiddleOrder1Bits,
     required int supplyGroupCodeHighOrder,
     required DateTime stagedAt,
-  }) => PendingKctSection._(
-    newKeyMiddleOrder1Bits: newKeyMiddleOrder1Bits,
-    supplyGroupCodeHighOrder: supplyGroupCodeHighOrder,
-    stagedAt: stagedAt,
-  );
+  }) =>
+      PendingKctSection._(
+        newKeyMiddleOrder1Bits: newKeyMiddleOrder1Bits,
+        supplyGroupCodeHighOrder: supplyGroupCodeHighOrder,
+        stagedAt: stagedAt,
+      );
 
+  /// Serialises this staged section to a JSON-friendly map. Only
+  /// the fields populated for the section (1st/2nd/3rd/4th) are
+  /// emitted.
   Map<String, dynamic> toJson() => {
-    if (newKeyHighOrderBits != null)
-      'new_key_high_order_bits': newKeyHighOrderBits,
-    if (keyExpiryNumberHighOrder != null)
-      'key_expiry_number_high_order': keyExpiryNumberHighOrder,
-    if (newKeyRevisionNumber != null)
-      'new_key_revision_number': newKeyRevisionNumber,
-    if (newKeyType != null) 'new_key_type': newKeyType,
-    if (rolloverKeyChange != null) 'roll_over_key_change': rolloverKeyChange,
-    if (newKeyLowOrderBits != null)
-      'new_key_low_order_bits': newKeyLowOrderBits,
-    if (keyExpiryNumberLowOrder != null)
-      'key_expiry_number_low_order': keyExpiryNumberLowOrder,
-    if (newTariffIndex != null) 'new_tariff_index': newTariffIndex,
-    if (newKeyMiddleOrder2Bits != null)
-      'new_key_middle_order_2_bits': newKeyMiddleOrder2Bits,
-    if (supplyGroupCodeLowOrder != null)
-      'supply_group_code_low_order': supplyGroupCodeLowOrder,
-    if (newKeyMiddleOrder1Bits != null)
-      'new_key_middle_order_1_bits': newKeyMiddleOrder1Bits,
-    if (supplyGroupCodeHighOrder != null)
-      'supply_group_code_high_order': supplyGroupCodeHighOrder,
-    'staged_at': stagedAt.toUtc().toIso8601String(),
-  };
+        if (newKeyHighOrderBits != null)
+          'new_key_high_order_bits': newKeyHighOrderBits,
+        if (keyExpiryNumberHighOrder != null)
+          'key_expiry_number_high_order': keyExpiryNumberHighOrder,
+        if (newKeyRevisionNumber != null)
+          'new_key_revision_number': newKeyRevisionNumber,
+        if (newKeyType != null) 'new_key_type': newKeyType,
+        if (rolloverKeyChange != null)
+          'roll_over_key_change': rolloverKeyChange,
+        if (newKeyLowOrderBits != null)
+          'new_key_low_order_bits': newKeyLowOrderBits,
+        if (keyExpiryNumberLowOrder != null)
+          'key_expiry_number_low_order': keyExpiryNumberLowOrder,
+        if (newTariffIndex != null) 'new_tariff_index': newTariffIndex,
+        if (newKeyMiddleOrder2Bits != null)
+          'new_key_middle_order_2_bits': newKeyMiddleOrder2Bits,
+        if (supplyGroupCodeLowOrder != null)
+          'supply_group_code_low_order': supplyGroupCodeLowOrder,
+        if (newKeyMiddleOrder1Bits != null)
+          'new_key_middle_order_1_bits': newKeyMiddleOrder1Bits,
+        if (supplyGroupCodeHighOrder != null)
+          'supply_group_code_high_order': supplyGroupCodeHighOrder,
+        'staged_at': stagedAt.toUtc().toIso8601String(),
+      };
 
+  /// Rebuilds a [PendingKctSection] from a JSON map produced by
+  /// [toJson].
+  /// Rebuilds a [PendingKctSection] from a JSON map produced by
+  /// [toJson].
   factory PendingKctSection.fromJson(Map<String, dynamic> j) =>
       PendingKctSection._(
         newKeyHighOrderBits: j['new_key_high_order_bits'] as String?,

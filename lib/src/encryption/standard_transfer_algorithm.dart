@@ -21,10 +21,13 @@ import 'tables.dart';
 /// key left by 1 bit. Decryption inverts the order: permute → S-box →
 /// rotate-key-right.
 class StandardTransferAlgorithm extends EncryptionAlgorithm {
+  /// Constructs the EA07 (Standard Transfer Algorithm) cipher.
   StandardTransferAlgorithm() : super(EncryptionAlgorithmCode.sta);
 
   late DecoderKey _decoderKey;
 
+  /// The decoder key used by the most recent [encrypt] / [decrypt]
+  /// call (populated as a side-effect of those operations).
   DecoderKey get decoderKey => _decoderKey;
 
   @override

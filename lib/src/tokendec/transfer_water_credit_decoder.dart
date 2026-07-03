@@ -9,16 +9,24 @@ import '../token/token.dart';
 /// Identical decrypt path to [TransferElectricityCreditDecoder];
 /// only the rehydrated token type differs.
 class TransferWaterCreditDecoder {
+  /// Decoder key used to decrypt the 64-bit block.
   final DecoderKey decoderKey;
+
+  /// Encryption algorithm used for the decrypt phase.
   final EncryptionAlgorithm encryptionAlgorithm;
 
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   TransferWaterCreditDecoder(this.decoderKey, this.encryptionAlgorithm);
 
+  /// Decode a water-credit token from its 20-digit displayable form.
   TransferWaterCreditToken decodeDecimal(String requestID, String decimal20) {
     final binary66 = TokenTransposition.tokenNoToBinary66(decimal20);
     return decodeBinary66(requestID, binary66);
   }
 
+  /// Decode a water-credit token from the raw 66-bit binary string.
+  ///
+  /// Throws [TokenError] when the token class is not 0.
   TransferWaterCreditToken decodeBinary66(String requestID, String binary66) {
     final r = TokenTransposition.untransposeFromBinary66(binary66);
     if (r.tokenClass.bitString.value != 0) {

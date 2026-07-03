@@ -14,6 +14,7 @@ import 'misty1.dart';
 /// `EncryptionAlgorithm` adapter: 64-bit `BitString` <-> 8-byte block,
 /// 16-byte `DecoderKey` <-> 128-bit MISTY1 key.
 class Misty1EncryptionAlgorithm extends EncryptionAlgorithm {
+  /// Constructs the EA11 (MISTY1) cipher wrapper.
   Misty1EncryptionAlgorithm() : super(EncryptionAlgorithmCode.misty1);
 
   @override
@@ -39,6 +40,8 @@ class Misty1EncryptionAlgorithm extends EncryptionAlgorithm {
   Uint8List encryptBytes(List<int> key, List<int> input) =>
       Misty1.encrypt(key, input);
 
+  /// Public byte-array MISTY1 decrypt used by callers with raw
+  /// 16-byte key + 8-byte block buffers.
   Uint8List decryptBytes(List<int> key, List<int> input) =>
       Misty1.decrypt(key, input);
 }

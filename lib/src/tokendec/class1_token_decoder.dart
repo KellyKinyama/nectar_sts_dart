@@ -16,16 +16,27 @@ import '../token/token.dart';
 /// The [DecoderKey] / [EncryptionAlgorithm] parameters are accepted
 /// for API symmetry with the Class 0/2 decoders but are unused.
 class Class1TokenDecoder {
+  /// Accepted for API symmetry with Class 0/2 decoders; unused for
+  /// Class 1 (payload is transmitted in the clear).
   final DecoderKey decoderKey;
+
+  /// Accepted for API symmetry; unused for Class 1.
   final EncryptionAlgorithm encryptionAlgorithm;
 
+  /// Binds [decoderKey] and [encryptionAlgorithm]; neither is used
+  /// during decode.
   Class1TokenDecoder(this.decoderKey, this.encryptionAlgorithm);
 
+  /// Decode a Class 1 token from its 20-digit displayable form.
   Class1Token decodeDecimal(String requestID, String decimal20) {
     final binary66 = TokenTransposition.tokenNoToBinary66(decimal20);
     return decodeBinary66(requestID, binary66);
   }
 
+  /// Decode a Class 1 token from the raw 66-bit binary string.
+  ///
+  /// Throws [TokenError] when the token class is not 1 or the
+  /// sub-class nibble is unknown.
   Class1Token decodeBinary66(String requestID, String binary66) {
     final r = TokenTransposition.untransposeFromBinary66(binary66);
     if (r.tokenClass.bitString.value != 1) {

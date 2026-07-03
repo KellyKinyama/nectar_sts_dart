@@ -13,26 +13,41 @@ import 'token.dart';
 ///
 /// where `M` is 24 (subClass 0) or 32 (subClass 1).
 abstract class Class1Token extends Token {
+  /// Manufacturer code populated after [decode] (8 or 16 bits).
   ManufacturerCode? manufacturerCode;
+
+  /// Vendor-defined control payload populated after [decode].
   Control? control;
 
+  /// Base constructor for subclasses.
   Class1Token(super.requestID);
 }
 
 /// Class 1 / SubClass 0 — InitiateMeterTestOrDisplay1
 /// (8-bit ManufacturerCode, 36-bit Control).
 class InitiateMeterTestOrDisplay1Token extends Class1Token {
+  /// Width of the ManufacturerCode field for this sub-class (`8`).
   static const int manufacturerCodeWidth = 8;
+
+  /// Width of the Control field for this sub-class (`36`).
   static const int controlWidth = 36;
 
+  /// Builds an empty InitiateMeterTestOrDisplay1 token; pre-populates
+  /// [tokenClass] and [tokenSubClass].
   InitiateMeterTestOrDisplay1Token(super.requestID) {
     tokenClass = TokenClass.initiateMeterTestDisplay();
     tokenSubClass = TokenSubClass.initiateMeterTestDisplay1();
   }
 
+  /// Type tag `"InitiateMeterTestOrDisplay1_10"` used in dispatcher
+  /// lookups.
   @override
   String get type => 'InitiateMeterTestOrDisplay1_10';
 
+  /// Verifies the CRC and extracts the 8-bit manufacturer code +
+  /// 36-bit control fields.
+  ///
+  /// Throws [CrcError] on CRC mismatch.
   @override
   void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
     decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
@@ -47,6 +62,8 @@ class InitiateMeterTestOrDisplay1Token extends Class1Token {
     );
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory InitiateMeterTestOrDisplay1Token.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -61,17 +78,28 @@ class InitiateMeterTestOrDisplay1Token extends Class1Token {
 /// Class 1 / SubClass 1 — InitiateMeterTestOrDisplay2
 /// (16-bit ManufacturerCode, 28-bit Control).
 class InitiateMeterTestOrDisplay2Token extends Class1Token {
+  /// Width of the ManufacturerCode field for this sub-class (`16`).
   static const int manufacturerCodeWidth = 16;
+
+  /// Width of the Control field for this sub-class (`28`).
   static const int controlWidth = 28;
 
+  /// Builds an empty InitiateMeterTestOrDisplay2 token; pre-populates
+  /// [tokenClass] and [tokenSubClass].
   InitiateMeterTestOrDisplay2Token(super.requestID) {
     tokenClass = TokenClass.initiateMeterTestDisplay();
     tokenSubClass = TokenSubClass.initiateMeterTestDisplay2();
   }
 
+  /// Type tag `"InitiateMeterTestOrDisplay2_11"` used in dispatcher
+  /// lookups.
   @override
   String get type => 'InitiateMeterTestOrDisplay2_11';
 
+  /// Verifies the CRC and extracts the 16-bit manufacturer code +
+  /// 28-bit control fields.
+  ///
+  /// Throws [CrcError] on CRC mismatch.
   @override
   void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
     decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
@@ -86,6 +114,8 @@ class InitiateMeterTestOrDisplay2Token extends Class1Token {
     );
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory InitiateMeterTestOrDisplay2Token.decoded(
     String requestID,
     BitString decryptedDataBlock,

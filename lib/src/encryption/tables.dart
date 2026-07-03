@@ -13,6 +13,10 @@
 /// bit-compatible with a third-party EA07.
 library;
 
+/// EA07 encrypting permutation table.
+///
+/// Maps each of the 64 output bit positions to the input bit position
+/// it is copied from during the STA encryption permutation stage.
 const List<int> encryptingPermutationTable = [
   55,
   42,
@@ -80,6 +84,8 @@ const List<int> encryptingPermutationTable = [
   26,
 ];
 
+/// EA07 decrypting permutation table — inverse of
+/// [encryptingPermutationTable].
 const List<int> decryptingPermutationTable = [
   55,
   54,
@@ -147,6 +153,8 @@ const List<int> decryptingPermutationTable = [
   30,
 ];
 
+/// EA07 first S-box used during encryption; maps each 4-bit input
+/// nibble to a 4-bit output nibble.
 const List<int> encryptingFirstSubstitutionTable = [
   14,
   10,
@@ -166,6 +174,8 @@ const List<int> encryptingFirstSubstitutionTable = [
   11,
 ];
 
+/// EA07 second S-box used during encryption; a distinct 4-bit
+/// substitution table applied to a different set of nibbles.
 const List<int> encryptingSecondSubstitutionTable = [
   12,
   8,
@@ -185,6 +195,8 @@ const List<int> encryptingSecondSubstitutionTable = [
   14,
 ];
 
+/// EA07 first S-box used during decryption — inverse of
+/// [encryptingFirstSubstitutionTable].
 const List<int> decryptingFirstSubstitutionTable = [
   12,
   6,
@@ -204,6 +216,8 @@ const List<int> decryptingFirstSubstitutionTable = [
   11,
 ];
 
+/// EA07 second S-box used during decryption — inverse of
+/// [encryptingSecondSubstitutionTable].
 const List<int> decryptingSecondSubstitutionTable = [
   9,
   11,

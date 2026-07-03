@@ -10,9 +10,13 @@ import '../token/token.dart';
 /// already-decoded 66-bit binary string, untransposes, decrypts and
 /// rebuilds the [TransferElectricityCreditToken].
 class TransferElectricityCreditDecoder {
+  /// Decoder key used to decrypt the 64-bit block.
   final DecoderKey decoderKey;
+
+  /// Encryption algorithm used for the decrypt phase.
   final EncryptionAlgorithm encryptionAlgorithm;
 
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   TransferElectricityCreditDecoder(this.decoderKey, this.encryptionAlgorithm);
 
   /// Decode a token from its 20-digit displayable form.

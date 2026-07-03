@@ -14,6 +14,7 @@ import 'token_generator.dart';
 /// Marker base for all Class 2 token generators.
 abstract class Class2TokenGenerator<T extends Class2Token>
     extends TokenGenerator<T> {
+  /// Forwards [decoderKey] and [encryptionAlgorithm] to [TokenGenerator].
   Class2TokenGenerator(super.decoderKey, super.encryptionAlgorithm);
 }
 
@@ -25,8 +26,14 @@ abstract class Class2TokenGenerator<T extends Class2Token>
 /// CRC input (50 bits): `register || tid || rnd || sub || class`.
 abstract class Class2RegisterTokenGenerator<T extends Class2RegisterToken>
     extends Class2TokenGenerator<T> {
+  /// Forwards [decoderKey] and [encryptionAlgorithm].
   Class2RegisterTokenGenerator(super.decoderKey, super.encryptionAlgorithm);
 
+  /// Assembles the 64-bit data block per the Class 2 register layout
+  /// and stamps the CRC.
+  ///
+  /// Throws [InvalidTokenException] when a required payload field is
+  /// missing.
   @override
   BitString buildDataBlock(T token) {
     if (token.registerBits == null ||
@@ -52,95 +59,122 @@ abstract class Class2RegisterTokenGenerator<T extends Class2RegisterToken>
   }
 }
 
+/// Generator for the SetMaximumPowerLimit engineering token.
 class SetMaximumPowerLimitTokenGenerator
     extends Class2RegisterTokenGenerator<SetMaximumPowerLimitToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   SetMaximumPowerLimitTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 
+  /// Convenience: build a fully-populated
+  /// [SetMaximumPowerLimitToken]; still needs [generate] to encrypt.
   SetMaximumPowerLimitToken buildToken(
     String requestID, {
     required RandomNo randomNo,
     required TokenIdentifier tokenIdentifier,
     required MaximumPowerLimit maximumPowerLimit,
-  }) => SetMaximumPowerLimitToken(requestID)
-    ..randomNo = randomNo
-    ..tokenIdentifier = tokenIdentifier
-    ..maximumPowerLimit = maximumPowerLimit;
+  }) =>
+      SetMaximumPowerLimitToken(requestID)
+        ..randomNo = randomNo
+        ..tokenIdentifier = tokenIdentifier
+        ..maximumPowerLimit = maximumPowerLimit;
 }
 
+/// Generator for the ClearCredit engineering token.
 class ClearCreditTokenGenerator
     extends Class2RegisterTokenGenerator<ClearCreditToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   ClearCreditTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 
+  /// Convenience: build a fully-populated [ClearCreditToken]; still
+  /// needs [generate] to encrypt.
   ClearCreditToken buildToken(
     String requestID, {
     required RandomNo randomNo,
     required TokenIdentifier tokenIdentifier,
     required Register register,
-  }) => ClearCreditToken(requestID)
-    ..randomNo = randomNo
-    ..tokenIdentifier = tokenIdentifier
-    ..register = register;
+  }) =>
+      ClearCreditToken(requestID)
+        ..randomNo = randomNo
+        ..tokenIdentifier = tokenIdentifier
+        ..register = register;
 }
 
+/// Generator for the SetTariffRate engineering token.
 class SetTariffRateTokenGenerator
     extends Class2RegisterTokenGenerator<SetTariffRateToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   SetTariffRateTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 
+  /// Convenience: build a fully-populated [SetTariffRateToken]; still
+  /// needs [generate] to encrypt.
   SetTariffRateToken buildToken(
     String requestID, {
     required RandomNo randomNo,
     required TokenIdentifier tokenIdentifier,
     required Rate rate,
-  }) => SetTariffRateToken(requestID)
-    ..randomNo = randomNo
-    ..tokenIdentifier = tokenIdentifier
-    ..rate = rate;
+  }) =>
+      SetTariffRateToken(requestID)
+        ..randomNo = randomNo
+        ..tokenIdentifier = tokenIdentifier
+        ..rate = rate;
 }
 
+/// Generator for the ClearTamperCondition engineering token.
 class ClearTamperConditionTokenGenerator
     extends Class2RegisterTokenGenerator<ClearTamperConditionToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   ClearTamperConditionTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 
+  /// Convenience: build a fully-populated
+  /// [ClearTamperConditionToken]; still needs [generate] to encrypt.
   ClearTamperConditionToken buildToken(
     String requestID, {
     required RandomNo randomNo,
     required TokenIdentifier tokenIdentifier,
     required Pad pad,
-  }) => ClearTamperConditionToken(requestID)
-    ..randomNo = randomNo
-    ..tokenIdentifier = tokenIdentifier
-    ..pad = pad;
+  }) =>
+      ClearTamperConditionToken(requestID)
+        ..randomNo = randomNo
+        ..tokenIdentifier = tokenIdentifier
+        ..pad = pad;
 }
 
+/// Generator for the SetMaximumPhasePowerUnbalanceLimit engineering
+/// token.
 class SetMaximumPhasePowerUnbalanceLimitTokenGenerator
-    extends
-        Class2RegisterTokenGenerator<SetMaximumPhasePowerUnbalanceLimitToken> {
+    extends Class2RegisterTokenGenerator<
+        SetMaximumPhasePowerUnbalanceLimitToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   SetMaximumPhasePowerUnbalanceLimitTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 
+  /// Convenience: build a fully-populated
+  /// [SetMaximumPhasePowerUnbalanceLimitToken]; still needs
+  /// [generate] to encrypt.
   SetMaximumPhasePowerUnbalanceLimitToken buildToken(
     String requestID, {
     required RandomNo randomNo,
     required TokenIdentifier tokenIdentifier,
     required MaximumPhasePowerUnbalanceLimit maximumPhasePowerUnbalanceLimit,
-  }) => SetMaximumPhasePowerUnbalanceLimitToken(requestID)
-    ..randomNo = randomNo
-    ..tokenIdentifier = tokenIdentifier
-    ..maximumPhasePowerUnbalanceLimit = maximumPhasePowerUnbalanceLimit;
+  }) =>
+      SetMaximumPhasePowerUnbalanceLimitToken(requestID)
+        ..randomNo = randomNo
+        ..tokenIdentifier = tokenIdentifier
+        ..maximumPhasePowerUnbalanceLimit = maximumPhasePowerUnbalanceLimit;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,12 +187,25 @@ class SetMaximumPhasePowerUnbalanceLimitTokenGenerator
 /// the meter as a pair before the rotation takes effect.
 class Set1stSectionDecoderKeyTokenGenerator
     extends Class2TokenGenerator<Set1stSectionDecoderKeyToken> {
+  /// High nibble of the new KEN.
   final KeyExpiryNumberHighOrder keyExpiryNumberHighOrder;
+
+  /// New KRN attached to the rotated key.
   final KeyRevisionNumber keyRevisionNumber;
+
+  /// Rollover-key-change flag.
   final RolloverKeyChange rolloverKeyChange;
+
+  /// New key type (DEA / MISTY1 / ...).
   final KeyType keyType;
+
+  /// The new decoder key being rotated in; only its high half rides
+  /// in this token.
   final DecoderKey newDecoderKey;
 
+  /// Builds a 1st-section-KCT generator wired for STA (EA07) or
+  /// MISTY1 (EA11); any other algorithm raises
+  /// [NotImplementedException].
   Set1stSectionDecoderKeyTokenGenerator({
     required DecoderKey decoderKey,
     required EncryptionAlgorithm encryptionAlgorithm,
@@ -245,10 +292,19 @@ class Set1stSectionDecoderKeyTokenGenerator
 /// decoder key. Paired with [Set1stSectionDecoderKeyTokenGenerator].
 class Set2ndSectionDecoderKeyTokenGenerator
     extends Class2TokenGenerator<Set2ndSectionDecoderKeyToken> {
+  /// Low nibble of the new KEN.
   final KeyExpiryNumberLowOrder keyExpiryNumberLowOrder;
+
+  /// New tariff-index attached to the rotated key.
   final TariffIndex tariffIndex;
+
+  /// The new decoder key being rotated in; only its low half rides in
+  /// this token.
   final DecoderKey newDecoderKey;
 
+  /// Builds a 2nd-section-KCT generator wired for STA (EA07) or
+  /// MISTY1 (EA11); any other algorithm raises
+  /// [NotImplementedException].
   Set2ndSectionDecoderKeyTokenGenerator({
     required DecoderKey decoderKey,
     required EncryptionAlgorithm encryptionAlgorithm,
@@ -265,6 +321,8 @@ class Set2ndSectionDecoderKeyTokenGenerator
     }
   }
 
+  /// Build a fully-populated [Set2ndSectionDecoderKeyToken]. Auto-splits
+  /// the new decoder key and picks the low half.
   Set2ndSectionDecoderKeyToken buildToken(String requestID) {
     final NewKeyLowOrder nklo;
     if (encryptionAlgorithm.code == EncryptionAlgorithmCode.sta) {
@@ -278,6 +336,7 @@ class Set2ndSectionDecoderKeyTokenGenerator
       ..newKeyLowOrder = nklo;
   }
 
+  /// One-shot helper: build the token then call [generate].
   Set2ndSectionDecoderKeyToken generateNew(String requestID) {
     return generate(buildToken(requestID));
   }
@@ -322,9 +381,15 @@ class Set2ndSectionDecoderKeyTokenGenerator
 /// STA.
 class Set3rdSectionDecoderKeyTokenGenerator
     extends Class2TokenGenerator<Set3rdSectionDecoderKeyToken> {
+  /// New supply-group-code being rotated in; only its low 12 bits
+  /// ride in this token.
   final SupplyGroupCode supplyGroupCode;
+
+  /// The new 128-bit MISTY1 decoder key being rotated in; only its
+  /// middle-order-2 32 bits ride in this token.
   final DecoderKey newDecoderKey;
 
+  /// Builds a 3rd-section-KCT generator; requires MISTY1 (EA11).
   Set3rdSectionDecoderKeyTokenGenerator({
     required DecoderKey decoderKey,
     required EncryptionAlgorithm encryptionAlgorithm,
@@ -339,6 +404,8 @@ class Set3rdSectionDecoderKeyTokenGenerator
     }
   }
 
+  /// Build a fully-populated [Set3rdSectionDecoderKeyToken]. Auto-splits
+  /// the new decoder key and picks the middle-order-2 32 bits.
   Set3rdSectionDecoderKeyToken buildToken(String requestID) {
     final split = splitMisty1DecoderKey(newDecoderKey);
     return Set3rdSectionDecoderKeyToken(requestID)
@@ -348,6 +415,7 @@ class Set3rdSectionDecoderKeyTokenGenerator
       ..newKeyMiddleOrder2 = split.middle2;
   }
 
+  /// One-shot helper: build the token then call [generate].
   Set3rdSectionDecoderKeyToken generateNew(String requestID) {
     return generate(buildToken(requestID));
   }
@@ -389,9 +457,15 @@ class Set3rdSectionDecoderKeyTokenGenerator
 /// Code. MISTY1 path only.
 class Set4thSectionDecoderKeyTokenGenerator
     extends Class2TokenGenerator<Set4thSectionDecoderKeyToken> {
+  /// New supply-group-code being rotated in; only its high 12 bits
+  /// ride in this token.
   final SupplyGroupCode supplyGroupCode;
+
+  /// The new 128-bit MISTY1 decoder key being rotated in; only its
+  /// middle-order-1 32 bits ride in this token.
   final DecoderKey newDecoderKey;
 
+  /// Builds a 4th-section-KCT generator; requires MISTY1 (EA11).
   Set4thSectionDecoderKeyTokenGenerator({
     required DecoderKey decoderKey,
     required EncryptionAlgorithm encryptionAlgorithm,
@@ -406,6 +480,8 @@ class Set4thSectionDecoderKeyTokenGenerator
     }
   }
 
+  /// Build a fully-populated [Set4thSectionDecoderKeyToken]. Auto-splits
+  /// the new decoder key and picks the middle-order-1 32 bits.
   Set4thSectionDecoderKeyToken buildToken(String requestID) {
     final split = splitMisty1DecoderKey(newDecoderKey);
     return Set4thSectionDecoderKeyToken(requestID)
@@ -415,6 +491,7 @@ class Set4thSectionDecoderKeyTokenGenerator
       ..newKeyMiddleOrder1 = split.middle1;
   }
 
+  /// One-shot helper: build the token then call [generate].
   Set4thSectionDecoderKeyToken generateNew(String requestID) {
     return generate(buildToken(requestID));
   }

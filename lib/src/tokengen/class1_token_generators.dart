@@ -11,8 +11,15 @@ import 'token_generator.dart';
 /// `crc.concat(manufacturerCode, control, subClass)` (LSB-first concat).
 abstract class Class1TokenGenerator<T extends Class1Token>
     extends TokenGenerator<T> {
+  /// Forwards [decoderKey] and [encryptionAlgorithm] to [TokenGenerator].
   Class1TokenGenerator(super.decoderKey, super.encryptionAlgorithm);
 
+  /// Assembles the 64-bit data block per STS Class 1 layout, computes
+  /// the CRC over the 50-bit protected input and stamps it onto the
+  /// token.
+  ///
+  /// Throws [InvalidTokenException] when a required payload field is
+  /// missing.
   @override
   BitString buildDataBlock(T token) {
     if (token.manufacturerCode == null ||
@@ -56,16 +63,22 @@ abstract class Class1TokenGenerator<T extends Class1Token>
   }
 }
 
+/// Concrete generator for the 8-bit-manufacturer / 36-bit-control
+/// InitiateMeterTestOrDisplay1 token.
 class InitiateMeterTestOrDisplay1TokenGenerator
     extends Class1TokenGenerator<InitiateMeterTestOrDisplay1Token> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   InitiateMeterTestOrDisplay1TokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
   ) : super(decoderKey, encryptionAlgorithm);
 }
 
+/// Concrete generator for the 16-bit-manufacturer / 28-bit-control
+/// InitiateMeterTestOrDisplay2 token.
 class InitiateMeterTestOrDisplay2TokenGenerator
     extends Class1TokenGenerator<InitiateMeterTestOrDisplay2Token> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   InitiateMeterTestOrDisplay2TokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,

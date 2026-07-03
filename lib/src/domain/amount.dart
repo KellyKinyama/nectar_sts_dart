@@ -12,13 +12,30 @@ import '../util/utils.dart';
 ///
 /// Range is 0 .. 18 201 624 units, per the STS specification.
 class Amount {
+  /// Width of the packed amount bit-field on the wire (`16`).
   static const int noOfBits = 16;
+
+  /// Minimum accepted units-purchased value (inclusive).
   static const int unitsPurchasedMin = 0;
+
+  /// Maximum accepted units-purchased value (inclusive), per
+  /// IEC 62055-41.
   static const int unitsPurchasedMax = 18201624;
 
+  /// The human-readable units value (e.g. `5.5` kWh).
   final double unitsPurchased;
+
+  /// The 16-bit packed encoding of [unitsPurchased] (exponent +
+  /// mantissa).
   late final BitString bitString;
 
+  /// Builds an [Amount] from a human-readable [unitsPurchased] value.
+  ///
+  /// Encoding is `unitsPurchased * 10` (tenths of a unit) via
+  /// [Utils.convertToBitString]. Values below 1 round up to at least
+  /// 1 tenth so a tiny top-up still encodes non-zero. Throws
+  /// [InvalidUnitsPurchasedException] when outside
+  /// `[unitsPurchasedMin, unitsPurchasedMax]`.
   Amount(this.unitsPurchased) {
     if (unitsPurchased < unitsPurchasedMin ||
         unitsPurchased > unitsPurchasedMax) {
@@ -38,9 +55,10 @@ class Amount {
 
   /// Reverse construct from a 16-bit `BitString` (decoder side).
   Amount.fromBitString(BitString bs)
-    : assert(bs.length == noOfBits),
-      unitsPurchased = Utils.convertToDouble(bs),
-      bitString = bs;
+      : assert(bs.length == noOfBits),
+        unitsPurchased = Utils.convertToDouble(bs),
+        bitString = bs;
 
+  /// Human-readable field name (`"Amount"`).
   String get name => 'Amount';
 }

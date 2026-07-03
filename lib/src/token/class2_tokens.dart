@@ -10,6 +10,7 @@ import 'token.dart';
 
 /// Marker base for all Class 2 (management / engineering) tokens.
 abstract class Class2Token extends Token {
+  /// Base constructor for subclasses.
   Class2Token(super.requestID);
 }
 
@@ -26,22 +27,36 @@ abstract class Class2Token extends Token {
 /// Subclasses override [registerBits] / [setRegisterBits] to plug in
 /// their payload-specific type.
 abstract class Class2RegisterToken extends Class2Token {
+  /// TID field, populated after [decode].
   TokenIdentifier? tokenIdentifier;
+
+  /// Random-number field, populated after [decode].
   RandomNo? randomNo;
 
+  /// Base constructor for subclasses.
   Class2RegisterToken(super.requestID);
 
   /// 16-bit payload register. Subclass-specific (Register / Pad /
   /// Rate / MaximumPowerLimit / MaximumPhasePowerUnbalanceLimit).
   BitString? get registerBits;
+
+  /// Setter counterpart of [registerBits]; subclasses parse [value]
+  /// into their concrete payload type.
   set registerBits(BitString? value);
 
+  /// Extracts the 24-bit TID (bits 32..55) as a [TokenIdentifier].
   TokenIdentifier extractTokenIdentifier(BitString decryptedDataBlock) =>
       TokenIdentifier.fromBitString(decryptedDataBlock.extractBits(32, 24));
 
+  /// Extracts the 4-bit random-number field (bits 56..59) as a
+  /// [RandomNo].
   RandomNo extractRandomNo(BitString decryptedDataBlock) =>
       RandomNo(decryptedDataBlock.extractBits(56, 4));
 
+  /// Verifies the CRC, extracts the 16-bit payload register plus TID
+  /// and RandomNo.
+  ///
+  /// Throws [CrcError] on CRC mismatch.
   @override
   void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
     decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
@@ -60,26 +75,33 @@ abstract class Class2RegisterToken extends Class2Token {
 /// Tells the meter to clamp the customer's instantaneous power draw
 /// to the carried [maximumPowerLimit] (a 16-bit unsigned value).
 class SetMaximumPowerLimitToken extends Class2RegisterToken {
+  /// Payload MPL, populated after [decode].
   MaximumPowerLimit? maximumPowerLimit;
 
+  /// Builds an empty SetMaximumPowerLimit token; pre-populates
+  /// [tokenClass] and [tokenSubClass].
   SetMaximumPowerLimitToken(super.requestID) {
     tokenClass = TokenClass.engineering('Set Maximum Power Limit');
     tokenSubClass = TokenSubClass.setMaximumPowerLimit();
   }
 
+  /// Type tag `"SetMaximumPowerLimit_20"` used in dispatcher lookups.
   @override
   String get type => 'SetMaximumPowerLimit_20';
 
+  /// Adapts the 16-bit register slot as [MaximumPowerLimit].
   @override
   BitString? get registerBits => maximumPowerLimit?.bitString;
 
+  /// Parses [value] into a [MaximumPowerLimit] (or clears when null).
   @override
   set registerBits(BitString? value) {
-    maximumPowerLimit = value == null
-        ? null
-        : MaximumPowerLimit.fromBitString(value);
+    maximumPowerLimit =
+        value == null ? null : MaximumPowerLimit.fromBitString(value);
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory SetMaximumPowerLimitToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -99,24 +121,32 @@ class SetMaximumPowerLimitToken extends Class2RegisterToken {
 /// [register] field carries an optional snapshot value the meter
 /// writes into the post-clear counter (commonly 0).
 class ClearCreditToken extends Class2RegisterToken {
+  /// Post-clear register snapshot, populated after [decode].
   Register? register;
 
+  /// Builds an empty ClearCredit token; pre-populates [tokenClass]
+  /// and [tokenSubClass].
   ClearCreditToken(super.requestID) {
     tokenClass = TokenClass.engineering('Clear Credit');
     tokenSubClass = TokenSubClass.clearCredit();
   }
 
+  /// Type tag `"ClearCredit_21"` used in dispatcher lookups.
   @override
   String get type => 'ClearCredit_21';
 
+  /// Adapts the 16-bit register slot as [Register].
   @override
   BitString? get registerBits => register?.bitString;
 
+  /// Parses [value] into a [Register] (or clears when null).
   @override
   set registerBits(BitString? value) {
     register = value == null ? null : Register(value);
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory ClearCreditToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -134,24 +164,32 @@ class ClearCreditToken extends Class2RegisterToken {
 
 /// Tells the meter to switch to the carried 16-bit tariff [rate].
 class SetTariffRateToken extends Class2RegisterToken {
+  /// New tariff rate, populated after [decode].
   Rate? rate;
 
+  /// Builds an empty SetTariffRate token; pre-populates [tokenClass]
+  /// and [tokenSubClass].
   SetTariffRateToken(super.requestID) {
     tokenClass = TokenClass.engineering('Set Tariff Rate');
     tokenSubClass = TokenSubClass.setTariffRate();
   }
 
+  /// Type tag `"SetTariffRate_22"` used in dispatcher lookups.
   @override
   String get type => 'SetTariffRate_22';
 
+  /// Adapts the 16-bit register slot as [Rate].
   @override
   BitString? get registerBits => rate?.bitString;
 
+  /// Parses [value] into a [Rate] (or clears when null).
   @override
   set registerBits(BitString? value) {
     rate = value == null ? null : Rate(value);
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory SetTariffRateToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -184,22 +222,41 @@ class SetTariffRateToken extends Class2RegisterToken {
 ///
 /// Must always be applied as a pair with [Set2ndSectionDecoderKeyToken].
 class Set1stSectionDecoderKeyToken extends Class2Token {
+  /// High nibble of the new KEN, populated after [decode].
   KeyExpiryNumberHighOrder? keyExpiryNumberHighOrder;
+
+  /// New key revision number, populated after [decode].
   KeyRevisionNumber? keyRevisionNumber;
+
+  /// Rollover-key-change flag, populated after [decode].
   RolloverKeyChange? rolloverKeyChange;
+
+  /// New key type, populated after [decode].
   KeyType? keyType;
+
+  /// High-order 32 bits of the new decoder key, populated after
+  /// [decode].
   NewKeyHighOrder? newKeyHighOrder;
+
+  /// Reserved `_3KCT` bit, defaulted to zero and rewritten by [decode].
   Reserved3Kct? reserved3Kct;
 
+  /// Builds an empty 1st-section KCT; pre-populates [tokenClass],
+  /// [tokenSubClass] and defaults [reserved3Kct] to zero.
   Set1stSectionDecoderKeyToken(super.requestID) {
     tokenClass = TokenClass.engineering('Set 1st Section Decoder Key');
     tokenSubClass = TokenSubClass.set1stSectionDecoderKey();
     reserved3Kct = Reserved3Kct.zero();
   }
 
+  /// Type tag `"Set1stSectionDecoderKey_23"` used in dispatcher
+  /// lookups.
   @override
   String get type => 'Set1stSectionDecoderKey_23';
 
+  /// Verifies the CRC and extracts every 1st-section KCT field.
+  ///
+  /// Throws [CrcError] on CRC mismatch.
   @override
   void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
     decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
@@ -220,6 +277,8 @@ class Set1stSectionDecoderKeyToken extends Class2Token {
     );
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory Set1stSectionDecoderKeyToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -246,18 +305,31 @@ class Set1stSectionDecoderKeyToken extends Class2Token {
 ///   bits 56..59   KeyExpiryNumberLowOrder (KENLO)     ( 4)
 ///   bits 60..63   TokenSubClass = 0x4                 ( 4)
 class Set2ndSectionDecoderKeyToken extends Class2Token {
+  /// Low nibble of the new KEN, populated after [decode].
   KeyExpiryNumberLowOrder? keyExpiryNumberLowOrder;
+
+  /// New tariff index, populated after [decode].
   TariffIndex? tariffIndex;
+
+  /// Low-order 32 bits of the new decoder key, populated after
+  /// [decode].
   NewKeyLowOrder? newKeyLowOrder;
 
+  /// Builds an empty 2nd-section KCT; pre-populates [tokenClass] and
+  /// [tokenSubClass].
   Set2ndSectionDecoderKeyToken(super.requestID) {
     tokenClass = TokenClass.engineering('Set 2nd Section Decoder Key');
     tokenSubClass = TokenSubClass.set2ndSectionDecoderKey();
   }
 
+  /// Type tag `"Set2ndSectionDecoderKey_24"` used in dispatcher
+  /// lookups.
   @override
   String get type => 'Set2ndSectionDecoderKey_24';
 
+  /// Verifies the CRC and extracts every 2nd-section KCT field.
+  ///
+  /// Throws [CrcError] on CRC mismatch.
   @override
   void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
     decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
@@ -272,6 +344,8 @@ class Set2ndSectionDecoderKeyToken extends Class2Token {
     );
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory Set2ndSectionDecoderKeyToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -290,24 +364,32 @@ class Set2ndSectionDecoderKeyToken extends Class2Token {
 /// Tells the meter to clear any latched tamper-detection flags. The
 /// 16-bit [pad] field is just nonce padding.
 class ClearTamperConditionToken extends Class2RegisterToken {
+  /// 16-bit random padding, populated after [decode].
   Pad? pad;
 
+  /// Builds an empty ClearTamperCondition token; pre-populates
+  /// [tokenClass] and [tokenSubClass].
   ClearTamperConditionToken(super.requestID) {
     tokenClass = TokenClass.engineering('Clear Tamper Condition');
     tokenSubClass = TokenSubClass.clearTamperCondition();
   }
 
+  /// Type tag `"ClearTamperCondition_25"` used in dispatcher lookups.
   @override
   String get type => 'ClearTamperCondition_25';
 
+  /// Adapts the 16-bit register slot as [Pad].
   @override
   BitString? get registerBits => pad?.bitString;
 
+  /// Parses [value] into a [Pad] (or clears when null).
   @override
   set registerBits(BitString? value) {
     pad = value == null ? null : Pad(value);
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory ClearTamperConditionToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -327,8 +409,11 @@ class ClearTamperConditionToken extends Class2RegisterToken {
 /// carried 16-bit [maximumPhasePowerUnbalanceLimit] (commonly a
 /// percentage).
 class SetMaximumPhasePowerUnbalanceLimitToken extends Class2RegisterToken {
+  /// Payload MPPUL, populated after [decode].
   MaximumPhasePowerUnbalanceLimit? maximumPhasePowerUnbalanceLimit;
 
+  /// Builds an empty SetMaximumPhasePowerUnbalanceLimit token;
+  /// pre-populates [tokenClass] and [tokenSubClass].
   SetMaximumPhasePowerUnbalanceLimitToken(super.requestID) {
     tokenClass = TokenClass.engineering(
       'Set Maximum Phase Power Unbalance Limit',
@@ -336,12 +421,17 @@ class SetMaximumPhasePowerUnbalanceLimitToken extends Class2RegisterToken {
     tokenSubClass = TokenSubClass.setMaximumPhasePowerUnbalanceLimit();
   }
 
+  /// Type tag `"SetMaximumPhasePowerUnbalanceLimit_26"` used in
+  /// dispatcher lookups.
   @override
   String get type => 'SetMaximumPhasePowerUnbalanceLimit_26';
 
+  /// Adapts the 16-bit register slot as [MaximumPhasePowerUnbalanceLimit].
   @override
   BitString? get registerBits => maximumPhasePowerUnbalanceLimit?.bitString;
 
+  /// Parses [value] into a [MaximumPhasePowerUnbalanceLimit] (or
+  /// clears when null).
   @override
   set registerBits(BitString? value) {
     maximumPhasePowerUnbalanceLimit = value == null
@@ -349,6 +439,8 @@ class SetMaximumPhasePowerUnbalanceLimitToken extends Class2RegisterToken {
         : MaximumPhasePowerUnbalanceLimit.fromBitString(value);
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory SetMaximumPhasePowerUnbalanceLimitToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -378,17 +470,28 @@ class SetMaximumPhasePowerUnbalanceLimitToken extends Class2RegisterToken {
 /// Must always be applied as part of a 4-token set together with the
 /// 1st, 2nd and 4th Section KCTs (MISTY1 path only).
 class Set3rdSectionDecoderKeyToken extends Class2Token {
+  /// Low-order 12 bits of the new SGC, populated after [decode].
   SupplyGroupCodeLowOrder? supplyGroupCodeLowOrder;
+
+  /// MISTY1 middle-order-2 32 bits of the new decoder key, populated
+  /// after [decode].
   NewKeyMiddleOrder2? newKeyMiddleOrder2;
 
+  /// Builds an empty 3rd-section KCT; pre-populates [tokenClass] and
+  /// [tokenSubClass].
   Set3rdSectionDecoderKeyToken(super.requestID) {
     tokenClass = TokenClass.engineering('Set 3rd Section Decoder Key');
     tokenSubClass = TokenSubClass.set3rdSectionDecoderKey();
   }
 
+  /// Type tag `"Set3rdSectionDecoderKey_28"` used in dispatcher
+  /// lookups.
   @override
   String get type => 'Set3rdSectionDecoderKey_28';
 
+  /// Verifies the CRC and extracts every 3rd-section KCT field.
+  ///
+  /// Throws [CrcError] on CRC mismatch.
   @override
   void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
     decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
@@ -403,6 +506,8 @@ class Set3rdSectionDecoderKeyToken extends Class2Token {
     );
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory Set3rdSectionDecoderKeyToken.decoded(
     String requestID,
     BitString decryptedDataBlock,
@@ -429,17 +534,28 @@ class Set3rdSectionDecoderKeyToken extends Class2Token {
 ///   bits 48..59   SupplyGroupCodeHighOrder (SGCHO)    (12)
 ///   bits 60..63   TokenSubClass = 0x9                 ( 4)
 class Set4thSectionDecoderKeyToken extends Class2Token {
+  /// High-order 12 bits of the new SGC, populated after [decode].
   SupplyGroupCodeHighOrder? supplyGroupCodeHighOrder;
+
+  /// MISTY1 middle-order-1 32 bits of the new decoder key, populated
+  /// after [decode].
   NewKeyMiddleOrder1? newKeyMiddleOrder1;
 
+  /// Builds an empty 4th-section KCT; pre-populates [tokenClass] and
+  /// [tokenSubClass].
   Set4thSectionDecoderKeyToken(super.requestID) {
     tokenClass = TokenClass.engineering('Set 4th Section Decoder Key');
     tokenSubClass = TokenSubClass.set4thSectionDecoderKey();
   }
 
+  /// Type tag `"Set4thSectionDecoderKey_29"` used in dispatcher
+  /// lookups.
   @override
   String get type => 'Set4thSectionDecoderKey_29';
 
+  /// Verifies the CRC and extracts every 4th-section KCT field.
+  ///
+  /// Throws [CrcError] on CRC mismatch.
   @override
   void decode(BitString decryptedDataBlock, BitString encryptedDataBlock) {
     decryptedTokenBitString = decryptedDataBlock.toPaddedBinary();
@@ -454,6 +570,8 @@ class Set4thSectionDecoderKeyToken extends Class2Token {
     );
   }
 
+  /// Decoder-side factory: rebuild a fully-populated token from the
+  /// decrypted + encrypted blocks coming out of the meter pipeline.
   factory Set4thSectionDecoderKeyToken.decoded(
     String requestID,
     BitString decryptedDataBlock,

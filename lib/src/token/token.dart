@@ -26,13 +26,31 @@ import '../exceptions/exceptions.dart';
 ///   bits 56..59   RandomNo               (4)
 ///   bits 60..63   TokenSubClass          (4)
 abstract class Token {
+  /// Caller-supplied correlation id echoed back in the token record
+  /// (used by the HTTP / HSM path to tie a decode back to a request).
   String requestID;
+
+  /// The 66-bit transposed token as an MSB-first `'0'`/`'1'` string,
+  /// or `null` before generation / after a purely decoder-side decode.
   String? encryptedTokenBitString; // 66 chars of '0'/'1', MSB-first
+
+  /// The 64-bit decrypted data block as an MSB-first `'0'`/`'1'`
+  /// string, or `null` before generation / decode.
   String? decryptedTokenBitString; // 64 chars of '0'/'1', MSB-first
+
+  /// CRC field extracted from the decrypted data block, or `null`
+  /// before decode.
   Crc? crc;
+
+  /// Token class (top 2 bits of the 66-bit form), or `null` before
+  /// generation / decode.
   TokenClass? tokenClass;
+
+  /// Token sub-class (top 4 bits of the decrypted data block), or
+  /// `null` before generation / decode.
   TokenSubClass? tokenSubClass;
 
+  /// Base constructor for subclasses; binds [requestID].
   Token(this.requestID);
 
   /// e.g. "Electricity_00".
@@ -76,12 +94,13 @@ abstract class Token {
     return Crc().generateCrc(combined);
   }
 
+  /// Extracts the CRC field (bits 0..15) from a decrypted data block.
   Crc extractCrc(BitString dataBlock) =>
       Crc.fromBitString(dataBlock.extractBits(0, 16));
 
+  /// Returns `"RequestID: <id>, Token: <20-digit-number-or-'<not generated>'>"`.
   @override
-  String toString() =>
-      'RequestID: $requestID, Token: '
+  String toString() => 'RequestID: $requestID, Token: '
       '${encryptedTokenBitString == null ? '<not generated>' : tokenNo}';
 }
 
@@ -114,7 +133,7 @@ class TokenTransposition {
   /// Decoder side: take the 66-char binary string, recover the token
   /// class bits and the original encrypted 64-bit block.
   static ({TokenClass tokenClass, BitString encrypted64})
-  untransposeFromBinary66(String binary66) {
+      untransposeFromBinary66(String binary66) {
     if (binary66.length != 66 || !RegExp(r'^[01]{66}$').hasMatch(binary66)) {
       throw const InvalidBitStringException(
         'untransposeFromBinary66 requires a 66-char binary string',

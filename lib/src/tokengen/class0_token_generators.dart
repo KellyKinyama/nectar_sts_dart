@@ -11,8 +11,15 @@ import 'token_generator.dart';
 /// after computing the CRC over `amount || tid || rnd || subClass || class`.
 abstract class Class0TokenGenerator<T extends Class0Token>
     extends TokenGenerator<T> {
+  /// Forwards [decoderKey] and [encryptionAlgorithm] to [TokenGenerator].
   Class0TokenGenerator(super.decoderKey, super.encryptionAlgorithm);
 
+  /// Assembles the 64-bit data block per STS Class 0 layout, computes
+  /// the CRC over the 50-bit protected input and stamps it onto the
+  /// token.
+  ///
+  /// Throws [InvalidTokenException] when a required payload field is
+  /// missing.
   @override
   BitString buildDataBlock(T token) {
     if (token.amountPurchased == null ||
@@ -44,6 +51,8 @@ abstract class Class0TokenGenerator<T extends Class0Token>
 /// Concrete Class 0 / SubClass 0 generator (kWh top-up).
 class TransferElectricityCreditTokenGenerator
     extends Class0TokenGenerator<TransferElectricityCreditToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm] for the STA/EA07
+  /// encrypt path.
   TransferElectricityCreditTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
@@ -55,6 +64,7 @@ class TransferElectricityCreditTokenGenerator
 /// the embedded subclass nibble differs.
 class ElectricityCurrencyCreditTokenGenerator
     extends Class0TokenGenerator<ElectricityCurrencyCreditToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   ElectricityCurrencyCreditTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
@@ -64,6 +74,7 @@ class ElectricityCurrencyCreditTokenGenerator
 /// Concrete Class 0 / SubClass 1 generator (water top-up).
 class TransferWaterCreditTokenGenerator
     extends Class0TokenGenerator<TransferWaterCreditToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   TransferWaterCreditTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
@@ -73,6 +84,7 @@ class TransferWaterCreditTokenGenerator
 /// Concrete Class 0 / SubClass 2 generator (gas top-up).
 class TransferGasCreditTokenGenerator
     extends Class0TokenGenerator<TransferGasCreditToken> {
+  /// Binds [decoderKey] and [encryptionAlgorithm].
   TransferGasCreditTokenGenerator(
     DecoderKey decoderKey,
     EncryptionAlgorithm encryptionAlgorithm,
