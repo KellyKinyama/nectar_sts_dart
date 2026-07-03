@@ -4,6 +4,19 @@ import 'key.dart';
 
 /// Master key held by the vending system. For DKGA-02 + EA09 this is
 /// 8 bytes (single-DES); for DKGA-04 it is 20 bytes (HMAC-SHA-256).
+///
+/// Example (from `test/api_server_test.dart`):
+/// ```dart
+/// // Common 8-byte DKGA-02 vending key.
+/// final vk02 = VendingCommonDesKey(
+///   [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF],
+/// );
+///
+/// // Unique 20-byte DKGA-04 vending key.
+/// final vk04 = VendingUniqueDesKey(
+///   List<int>.generate(20, (i) => i + 1),
+/// );
+/// ```
 abstract class VendingKey extends Key {
   /// Base constructor for subclasses; forwards [data] to [Key].
   VendingKey([super.data]);

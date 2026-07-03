@@ -6,6 +6,18 @@ import 'key.dart';
 
 /// 64-bit symmetric key derived from a vending key + meter parameters
 /// by one of the DKGA algorithms.
+///
+/// Example:
+/// ```dart
+/// // Wrap the 8-byte output of DKGA-02.
+/// final dk = DecoderKey([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
+/// dk.toString();       // '1122334455667788'
+/// dk.keyData.length;   // 8
+///
+/// // Named-constructor variants set `specialName` for logging.
+/// DecoderKey.common(dk.keyData).specialName;   // 'Decoder Common Transfer Key'
+/// DecoderKey.unique(dk.keyData).specialName;   // 'Decoder Unique Transfer Key'
+/// ```
 class DecoderKey extends Key {
   /// Builds a [DecoderKey] from an optional byte list.
   ///
