@@ -66,13 +66,11 @@ class Misty1 {
     _checkBlock(input, 'input');
     _checkBlock(out, 'out');
 
-    var l =
-        ((input[0] & 0xFF) << 24) |
+    var l = ((input[0] & 0xFF) << 24) |
         ((input[1] & 0xFF) << 16) |
         ((input[2] & 0xFF) << 8) |
         (input[3] & 0xFF);
-    var r =
-        ((input[4] & 0xFF) << 24) |
+    var r = ((input[4] & 0xFF) << 24) |
         ((input[5] & 0xFF) << 16) |
         ((input[6] & 0xFF) << 8) |
         (input[7] & 0xFF);
@@ -120,13 +118,11 @@ class Misty1 {
     _checkBlock(input, 'input');
     _checkBlock(out, 'out');
 
-    final l9 =
-        ((input[0] & 0xFF) << 24) |
+    final l9 = ((input[0] & 0xFF) << 24) |
         ((input[1] & 0xFF) << 16) |
         ((input[2] & 0xFF) << 8) |
         (input[3] & 0xFF);
-    final r9 =
-        ((input[4] & 0xFF) << 24) |
+    final r9 = ((input[4] & 0xFF) << 24) |
         ((input[5] & 0xFF) << 16) |
         ((input[6] & 0xFF) << 8) |
         (input[7] & 0xFF);
