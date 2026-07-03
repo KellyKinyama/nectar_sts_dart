@@ -20,6 +20,17 @@ import 'tables.dart';
 /// at the same position), runs a 64-bit permutation, and rotates the
 /// key left by 1 bit. Decryption inverts the order: permute → S-box →
 /// rotate-key-right.
+///
+/// Example (from `test/encryption_test.dart`):
+/// ```dart
+/// final key = DecoderKey([0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04]);
+/// final pt  = BitString.fromValue(0xCAFEBABE12345678, 64);
+///
+/// final ea07 = StandardTransferAlgorithm();
+/// final ct   = ea07.encrypt(key, pt);
+/// final back = ea07.decrypt(key, ct);
+/// back.value == pt.value; // true (round-trip)
+/// ```
 class StandardTransferAlgorithm extends EncryptionAlgorithm {
   /// Constructs the EA07 (Standard Transfer Algorithm) cipher.
   StandardTransferAlgorithm() : super(EncryptionAlgorithmCode.sta);

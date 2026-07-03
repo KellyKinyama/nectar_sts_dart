@@ -11,6 +11,22 @@
 /// holds them exactly without wrap. We use `>>>` for unsigned shifts
 /// and explicit masks where the Java original implicitly truncates
 /// via `long` semantics.
+///
+/// Example (RFC 2994 Appendix A.1 vector, from `test/misty1_test.dart`):
+/// ```dart
+/// Uint8List h(String s) {
+///   final clean = s.replaceAll(' ', '');
+///   return Uint8List.fromList([
+///     for (var i = 0; i < clean.length; i += 2)
+///       int.parse(clean.substring(i, i + 2), radix: 16),
+///   ]);
+/// }
+///
+/// final key = h('00112233 44556677 8899aabb ccddeeff');
+/// final pt  = h('01234567 89abcdef');
+///
+/// Misty1.encrypt(key, pt); // == h('8b1da5f5 6ab3d07c')
+/// ```
 library;
 
 import 'dart:typed_data';

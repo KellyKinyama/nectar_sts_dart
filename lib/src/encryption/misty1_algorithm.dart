@@ -13,6 +13,17 @@ import 'misty1.dart';
 /// The block primitive lives in [Misty1]; this class is the
 /// `EncryptionAlgorithm` adapter: 64-bit `BitString` <-> 8-byte block,
 /// 16-byte `DecoderKey` <-> 128-bit MISTY1 key.
+///
+/// Example (round-trip via a 128-bit decoder key):
+/// ```dart
+/// final key = DecoderKey(List<int>.generate(16, (i) => i));
+/// final pt  = BitString.fromValue(0x0123456789ABCDEF, 64);
+///
+/// final ea11 = Misty1EncryptionAlgorithm();
+/// final ct   = ea11.encrypt(key, pt);
+/// final back = ea11.decrypt(key, ct);
+/// back.value == pt.value; // true
+/// ```
 class Misty1EncryptionAlgorithm extends EncryptionAlgorithm {
   /// Constructs the EA11 (MISTY1) cipher wrapper.
   Misty1EncryptionAlgorithm() : super(EncryptionAlgorithmCode.misty1);

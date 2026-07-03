@@ -21,6 +21,14 @@ import 'encryption_algorithm.dart';
 /// - The Java code only implements `encrypt(...)`. `decrypt(...)`
 ///   throws `NotImplementedException`. We provide a real DES decrypt
 ///   because the Dart port has no reason to omit it.
+///
+/// Example (FIPS 81 test vector, from `test/encryption_test.dart`):
+/// ```dart
+/// final key   = DecoderKey([0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]);
+/// final plain = BitString.fromValue(0x0123456789ABCDE7);
+/// final ct    = DataEncryptionAlgorithm().encrypt(key, plain);
+/// ct.value; // 0xC95744256A5ED31D
+/// ```
 class DataEncryptionAlgorithm extends EncryptionAlgorithm {
   /// Constructs the EA09 (Data Encryption Algorithm / single-DES)
   /// cipher.
