@@ -9,6 +9,29 @@ import 'token_generator.dart';
 
 /// Class 1 generator. The 64-bit data block is laid out as
 /// `crc.concat(manufacturerCode, control, subClass)` (LSB-first concat).
+///
+/// Example (from `test/class1_and_dispatcher_test.dart`):
+/// ```dart
+/// final token = InitiateMeterTestOrDisplay1Token('req-100')
+///   ..manufacturerCode = ManufacturerCode.fromInt(0xA5, widthBits: 8)
+///   ..control          = Control(
+///     BitString.fromValue(0x123456789, 36),
+///     ManufacturerCode.fromInt(0xA5, widthBits: 8),
+///   );
+///
+/// InitiateMeterTestOrDisplay1TokenGenerator(
+///   decoderKey, StandardTransferAlgorithm(),
+/// ).generate(token);
+///
+/// // Round-trip through the dispatcher.
+/// final result = TokenDecoderDispatcher(
+///   decoderKey, StandardTransferAlgorithm(),
+/// ).decodeDecimal('req-100', token.tokenNo);
+/// final decoded = (result as DecodeAccepted).token
+///     as InitiateMeterTestOrDisplay1Token;
+/// decoded.manufacturerCode!.value; // 0xA5
+/// decoded.control!.value;          // 0x123456789
+/// ```
 abstract class Class1TokenGenerator<T extends Class1Token>
     extends TokenGenerator<T> {
   /// Forwards [decoderKey] and [encryptionAlgorithm] to [TokenGenerator].

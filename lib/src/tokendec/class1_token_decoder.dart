@@ -15,6 +15,17 @@ import '../token/token.dart';
 ///
 /// The [DecoderKey] / [EncryptionAlgorithm] parameters are accepted
 /// for API symmetry with the Class 0/2 decoders but are unused.
+///
+/// Example:
+/// ```dart
+/// // key + algorithm are ignored for Class 1; pass any values.
+/// final decoder = Class1TokenDecoder(decoderKey, StandardTransferAlgorithm());
+/// final t = decoder.decodeDecimal('req-100', tokenNo20);
+/// if (t is InitiateMeterTestOrDisplay1Token) {
+///   t.manufacturerCode!.value; // 8-bit mfg code
+///   t.control!.value;          // 36-bit control payload
+/// }
+/// ```
 class Class1TokenDecoder {
   /// Accepted for API symmetry with Class 0/2 decoders; unused for
   /// Class 1 (payload is transmitted in the clear).

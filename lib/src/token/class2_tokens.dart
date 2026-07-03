@@ -26,6 +26,23 @@ abstract class Class2Token extends Token {
 ///
 /// Subclasses override [registerBits] / [setRegisterBits] to plug in
 /// their payload-specific type.
+///
+/// Example (SetMaximumPowerLimit issued via [VirtualHsm], round-tripped
+/// through the top-level dispatcher — from
+/// `test/class2_register_tokens_test.dart`):
+/// ```dart
+/// final tokenNo = hsm.generateToken('mpl-rt', {
+///   VirtualHsmParams.tokenClass:         '2',
+///   VirtualHsmParams.tokenSubclass:      '0',
+///   VirtualHsmParams.maximumPowerLimit:  4321,
+///   // … usual DKGA-02 parameters (kt, sgc, ti, krn, iin, drn, base date)
+/// }).tokenNo;
+///
+/// final result = TokenDecoderDispatcher(decoderKey, StandardTransferAlgorithm())
+///     .decodeDecimal('mpl-rt-dec', tokenNo);
+/// final t = (result as DecodeAccepted).token as SetMaximumPowerLimitToken;
+/// t.maximumPowerLimit!.value; // 4321
+/// ```
 abstract class Class2RegisterToken extends Class2Token {
   /// TID field, populated after [decode].
   TokenIdentifier? tokenIdentifier;

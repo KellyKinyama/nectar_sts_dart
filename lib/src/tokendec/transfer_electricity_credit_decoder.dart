@@ -9,6 +9,17 @@ import '../token/token.dart';
 /// tokens. Accepts either a 20-digit decimal token string or the
 /// already-decoded 66-bit binary string, untransposes, decrypts and
 /// rebuilds the [TransferElectricityCreditToken].
+///
+/// Example (from `test/token_round_trip_test.dart`):
+/// ```dart
+/// final decoded = TransferElectricityCreditDecoder(
+///   decoderKey,
+///   StandardTransferAlgorithm(),
+/// ).decodeDecimal('req-001-back', token.tokenNo);
+///
+/// decoded.amountPurchased!.unitsPurchased; // 5.5
+/// decoded.tokenClass!.bitString.value;     // 0
+/// ```
 class TransferElectricityCreditDecoder {
   /// Decoder key used to decrypt the 64-bit block.
   final DecoderKey decoderKey;

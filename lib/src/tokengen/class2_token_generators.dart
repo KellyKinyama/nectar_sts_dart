@@ -24,6 +24,24 @@ abstract class Class2TokenGenerator<T extends Class2Token>
 ///
 /// 64-bit data block: `crc || register(16) || tid(24) || rnd(4) || sub(4)`
 /// CRC input (50 bits): `register || tid || rnd || sub || class`.
+///
+/// Example (SetMaximumPowerLimit, from
+/// `test/class2_register_tokens_test.dart`):
+/// ```dart
+/// final token = SetMaximumPowerLimitTokenGenerator(
+///   decoderKey, StandardTransferAlgorithm(),
+/// ).buildToken(
+///   'mpl-rt',
+///   randomNo:          RandomNo.fromInt(7),
+///   tokenIdentifier:   TokenIdentifier(BaseDate.date1993),
+///   maximumPowerLimit: MaximumPowerLimit(4321),
+/// );
+///
+/// SetMaximumPowerLimitTokenGenerator(
+///   decoderKey, StandardTransferAlgorithm(),
+/// ).generate(token);
+/// token.tokenNo; // 20-digit displayable form
+/// ```
 abstract class Class2RegisterTokenGenerator<T extends Class2RegisterToken>
     extends Class2TokenGenerator<T> {
   /// Forwards [decoderKey] and [encryptionAlgorithm].

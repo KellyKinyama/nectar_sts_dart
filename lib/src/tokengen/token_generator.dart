@@ -6,6 +6,23 @@ import '../token/token.dart';
 /// Common skeleton of every token-generator. The only shared piece of
 /// behaviour is the 66-bit transposition (which is identical for every
 /// class) and EA07 encryption (which any class may delegate to).
+///
+/// Example (Class 0 electricity credit, from
+/// `test/token_round_trip_test.dart`):
+/// ```dart
+/// final generator = TransferElectricityCreditTokenGenerator(
+///   decoderKey,
+///   StandardTransferAlgorithm(),
+/// );
+///
+/// final token = TransferElectricityCreditToken('req-001')
+///   ..amountPurchased = Amount(5.5)
+///   ..tokenIdentifier = TokenIdentifier(BaseDate.date1993)
+///   ..randomNo        = RandomNo.fromInt(0xA);
+///
+/// generator.generate(token);
+/// token.tokenNo; // 20-digit displayable form
+/// ```
 abstract class TokenGenerator<T extends Token> {
   /// Decoder key the token will be encrypted / signed under.
   final DecoderKey decoderKey;

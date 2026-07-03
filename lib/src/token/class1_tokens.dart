@@ -12,6 +12,22 @@ import 'token.dart';
 ///   bits 60..63   TokenSubClass         (4)
 ///
 /// where `M` is 24 (subClass 0) or 32 (subClass 1).
+///
+/// Example (from `test/class1_and_dispatcher_test.dart`):
+/// ```dart
+/// // SubClass 0: 8-bit mfg code, 36-bit control.
+/// final token = InitiateMeterTestOrDisplay1Token('req-100')
+///   ..manufacturerCode = ManufacturerCode.fromInt(0xA5, widthBits: 8)
+///   ..control          = Control(
+///     BitString.fromValue(0x123456789, 36),
+///     ManufacturerCode.fromInt(0xA5, widthBits: 8),
+///   );
+///
+/// InitiateMeterTestOrDisplay1TokenGenerator(
+///   decoderKey, StandardTransferAlgorithm(),
+/// ).generate(token);
+/// // Class 1 tokens are transmitted in the clear (no EA encrypt).
+/// ```
 abstract class Class1Token extends Token {
   /// Manufacturer code populated after [decode] (8 or 16 bits).
   ManufacturerCode? manufacturerCode;

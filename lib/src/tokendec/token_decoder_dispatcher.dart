@@ -48,6 +48,22 @@ class DecodeFailure extends DecodeResult {
 /// Currently supports Class 0 (TransferElectricityCredit) and Class 1
 /// (InitiateMeterTestOrDisplay 1/2). Class 2 and Class 3 tokens are
 /// rejected with `DecodeFailure(NotImplementedException(...))`.
+///
+/// Example:
+/// ```dart
+/// final dispatcher = TokenDecoderDispatcher(
+///   decoderKey,
+///   StandardTransferAlgorithm(),
+/// );
+///
+/// final result = dispatcher.decodeDecimal('req-001', tokenNo20);
+/// switch (result) {
+///   case DecodeAccepted(:final token):
+///     // token is a fully populated Class 0/1 Token.
+///   case DecodeFailure(:final reason):
+///     // reject / log; e.g. bad CRC, unknown sub-class, tampered digits.
+/// }
+/// ```
 class TokenDecoderDispatcher {
   /// Decoder key used for every class that requires decryption.
   final DecoderKey decoderKey;

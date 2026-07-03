@@ -25,6 +25,24 @@ import '../exceptions/exceptions.dart';
 ///   bits 32..55   TokenIdentifier (TID)  (24)
 ///   bits 56..59   RandomNo               (4)
 ///   bits 60..63   TokenSubClass          (4)
+///
+/// Example (from `test/token_round_trip_test.dart`):
+/// ```dart
+/// final token = TransferElectricityCreditToken('req-001')
+///   ..amountPurchased = Amount(5.5)
+///   ..tokenIdentifier = TokenIdentifier(
+///     BaseDate.date1993,
+///     timeOfIssue: DateTime.utc(2024, 3, 15, 10, 30),
+///   )
+///   ..randomNo = RandomNo.fromInt(0xA);
+///
+/// TransferElectricityCreditTokenGenerator(
+///   decoderKey, StandardTransferAlgorithm(),
+/// ).generate(token);
+///
+/// token.encryptedTokenBitString!.length; // 66
+/// token.tokenNo.length;                  // 20
+/// ```
 abstract class Token {
   /// Caller-supplied correlation id echoed back in the token record
   /// (used by the HTTP / HSM path to tie a decode back to a request).
