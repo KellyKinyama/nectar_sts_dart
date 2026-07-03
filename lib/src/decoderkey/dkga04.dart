@@ -45,6 +45,26 @@ import 'dkga02.dart' show DecoderKeyGeneratorAlgorithm;
 ///              compatibility shim with the earlier DKGA-02 + EA02
 ///              implementation referenced by IEC 62055-41:2014.
 ///   - MISTY1 : first 16 bytes of the HMAC, as-is.
+///
+/// Example (from `test/dkga_test.dart`, EA07 branch):
+/// ```dart
+/// final dk = DecoderKeyGeneratorAlgorithm04(
+///   baseDate:            BaseDate.date2014,
+///   tariffIndex:         TariffIndex('07'),
+///   supplyGroupCode:     SupplyGroupCode('123456'),
+///   keyType:             KeyType(2),
+///   keyRevisionNumber:   KeyRevisionNumber(1),
+///   encryptionAlgorithm: StandardTransferAlgorithm(),
+///   meterPan: MeterPrimaryAccountNumber(
+///     issuerIdentificationNumber:            IssuerIdentificationNumber('600727'),
+///     individualAccountIdentificationNumber:
+///         IndividualAccountIdentificationNumber('12345678901'),
+///   ),
+///   // 20-byte (160-bit) HMAC-SHA-256 vending key.
+///   vendingKey: VendingUniqueDesKey(List<int>.generate(20, (i) => i + 1)),
+/// ).generate();
+/// dk.keyData.length; // 8 (STA-sized 64-bit key)
+/// ```
 class DecoderKeyGeneratorAlgorithm04 extends DecoderKeyGeneratorAlgorithm {
   /// STS reference base date (drives the `bd` field of the data block).
   final BaseDate baseDate;

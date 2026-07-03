@@ -62,6 +62,23 @@ Uint8List hexDecode8(String hex) {
 /// (1) The XOR-with-input dance after DES is the IEC 62055-41
 /// "key-derivation" construction — it turns the one-way DES step into
 /// a Davies-Meyer-flavored compression.
+///
+/// Example (from `test/dkga_test.dart`):
+/// ```dart
+/// final dk = DecoderKeyGeneratorAlgorithm02(
+///   keyType:           KeyType(2),
+///   supplyGroupCode:   SupplyGroupCode('123456'),
+///   tariffIndex:       TariffIndex('07'),
+///   keyRevisionNumber: KeyRevisionNumber(1),
+///   issuerIdentificationNumber:            IssuerIdentificationNumber('600727'),
+///   individualAccountIdentificationNumber:
+///       IndividualAccountIdentificationNumber('12345678901'),
+///   vendingKey: VendingCommonDesKey(
+///     [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF],
+///   ),
+/// ).generate();
+/// dk.keyData.length; // 8 (64-bit derived DES key)
+/// ```
 class DecoderKeyGeneratorAlgorithm02 extends DecoderKeyGeneratorAlgorithm {
   /// Issuer Identification Number (4 or 6 digits).
   final IssuerIdentificationNumber issuerIdentificationNumber;
