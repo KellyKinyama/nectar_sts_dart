@@ -3,6 +3,14 @@ import 'bit_string.dart';
 
 /// A 4-bit field (0..15). Wraps a [BitString] of length 4.
 /// Mirrors `domain/base/Nibble.java`.
+///
+/// Example:
+/// ```dart
+/// // Extract the low nibble of an 8-bit field.
+/// final byte = BitString.fromValue(0xAB, 8);
+/// final low  = byte.getNibble(0);
+/// low.nibble.value; // 0xB
+/// ```
 class Nibble {
   /// Bit width of a nibble (`4`).
   static const int noBitsNibble = 4;

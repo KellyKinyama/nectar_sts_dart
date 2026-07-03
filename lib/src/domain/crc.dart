@@ -7,6 +7,14 @@ import '../util/utils.dart';
 /// Mirrors `domain/Crc.java`. The output bytes are byte-swapped before
 /// being returned (per the Java original), matching the on-wire byte
 /// order for STS tokens.
+///
+/// Example (from `test/base_layer_test.dart`):
+/// ```dart
+/// // Standard Modbus reference vector for the ASCII string '123456789'
+/// // is 0x4B37; this implementation byte-swaps to 0x374B on the way out.
+/// final crc = Crc().generateCrcBytes('123456789'.codeUnits);
+/// crc; // 0x374B
+/// ```
 class Crc {
   /// Width of the CRC bit-field on the wire (`16`).
   static const int noOfBits = 16;

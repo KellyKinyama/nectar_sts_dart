@@ -1,5 +1,16 @@
 /// Luhn (mod-10) check-digit generator. Direct port of
 /// `generators/utils/LuhnAlgorithm.java`.
+///
+/// Note: this port matches the Java reference which toggles the
+/// `alternate` flag BEFORE the first iteration, so the **rightmost**
+/// digit is the one that gets doubled (opposite of the textbook Luhn
+/// convention). For `428671502` this yields `6`, not the standard
+/// Luhn `3`.
+///
+/// Example (from `test/base_layer_test.dart`):
+/// ```dart
+/// LuhnAlgorithm.generateCheckDigit(428671502); // 6
+/// ```
 class LuhnAlgorithm {
   LuhnAlgorithm._();
 

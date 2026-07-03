@@ -10,6 +10,18 @@ import 'nibble.dart';
 /// matches the original Java `BitString` API.
 ///
 /// Direct port of `domain/base/BitString.java`.
+///
+/// Example (from `test/base_layer_test.dart`):
+/// ```dart
+/// final bs = BitString.fromBinary('1100101100110001'); // 16 bits
+/// bs.getBit(0).intValue;      // 1  (LSB, rightmost character)
+/// bs.getBit(15).intValue;     // 1  (MSB, leftmost character)
+/// bs.extractBits(0, 8).value; // 0x31 == 0011 0001
+///
+/// final a = BitString.fromValue(0xA, 4); // 1010
+/// final b = BitString.fromValue(0x5, 4); // 0101
+/// a.concat([b]).value;                    // 0x5A (b shifts into high nibble)
+/// ```
 class BitString implements Comparable<BitString> {
   /// [compareTo] result meaning "equal".
   static const int sameCmp = 0;
@@ -254,6 +266,13 @@ class BitString implements Comparable<BitString> {
   /// For 64-bit fields the rotation uses fast bitwise math; shorter
   /// fields use the general per-bit path. Used by the STS Standard
   /// Transfer Algorithm and DKGA rotation stages.
+  ///
+  /// Example (from `test/base_layer_test.dart`):
+  /// ```dart
+  /// final bs = BitString.fromValue(0x8000000000000001, 64);
+  /// final r  = BitString.rotate(bs, RotateDirection.right, 1);
+  /// r.value; // 0xC000000000000000
+  /// ```
   static BitString rotate(
     BitString bitString,
     RotateDirection direction,
