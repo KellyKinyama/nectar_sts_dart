@@ -11,6 +11,16 @@ import '../util/utils.dart';
 ///                          `unitsPurchased * 10` (tenths of a unit).
 ///
 /// Range is 0 .. 18 201 624 units, per the STS specification.
+///
+/// Example:
+/// ```dart
+/// final a = Amount(25.5);   // 25.5 kWh
+/// a.bitString.length;       // 16
+///
+/// // Round-trip via the wire encoding.
+/// final back = Amount.fromBitString(a.bitString);
+/// back.unitsPurchased;      // 25.5
+/// ```
 class Amount {
   /// Width of the packed amount bit-field on the wire (`16`).
   static const int noOfBits = 16;

@@ -11,6 +11,13 @@ import '../exceptions/exceptions.dart';
 ///   2  Gas
 ///   3  Time
 ///   4  Electricity (currency-denominated)
+///
+/// Example:
+/// ```dart
+/// TokenSubClass.electricityCredit().bitString.value;         // 0
+/// TokenSubClass.set1stSectionDecoderKey().bitString.value;   // 0x3
+/// TokenSubClass.set4thSectionDecoderKey().bitString.value;   // 0x9
+/// ```
 class TokenSubClass {
   /// Width of the sub-class bit-field on the wire (`4`).
   static const int noOfBits = 4;

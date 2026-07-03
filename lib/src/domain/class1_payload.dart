@@ -5,6 +5,16 @@ import '../exceptions/exceptions.dart';
 ///
 /// SubClass 0 (InitiateMeterTestOrDisplay1) uses 8 bits.
 /// SubClass 1 (InitiateMeterTestOrDisplay2) uses 16 bits.
+///
+/// Example:
+/// ```dart
+/// // 8-bit code for InitiateMeterTestOrDisplay1.
+/// final mc8  = ManufacturerCode.fromInt(0xA5,   widthBits: 8);
+/// // 16-bit code for InitiateMeterTestOrDisplay2.
+/// final mc16 = ManufacturerCode.fromInt(0xBEEF, widthBits: 16);
+/// mc8.value;  // 0xA5
+/// mc16.value; // 0xBEEF
+/// ```
 class ManufacturerCode {
   /// Packed 8- or 16-bit manufacturer code.
   final BitString bitString;

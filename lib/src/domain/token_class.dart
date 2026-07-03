@@ -7,6 +7,13 @@ import '../exceptions/exceptions.dart';
 ///   - 1  Initiate meter test / display
 ///   - 2  Engineering / set-parameter
 ///   - 3  Reserved
+///
+/// Example:
+/// ```dart
+/// final tc = TokenClass.electricityCreditTransfer();
+/// tc.bitString.value;  // 0
+/// tc.name;             // 'Electricity Credit Transfer'
+/// ```
 class TokenClass {
   /// Width of the class bit-field on the wire (`2`).
   static const int noOfBits = 2;

@@ -8,6 +8,16 @@ import 'base_date.dart';
 /// Mirrors `domain/TokenIdentifier.java` but uses `DateTime` rather
 /// than Joda-Time. The "minute-of-day == 1 → add 1 minute" quirk from
 /// the Java original is preserved bit-for-bit.
+///
+/// Example (from `test/base_layer_test.dart`):
+/// ```dart
+/// final tid = TokenIdentifier(
+///   BaseDate.date1993,
+///   timeOfIssue: DateTime.utc(1993, 1, 1, 1, 0, 0),
+/// );
+/// tid.getDifferenceFromBaseTimeInMinutes(); // 60
+/// tid.bitString.length;                     // 24
+/// ```
 class TokenIdentifier {
   /// Width of the TID bit-field on the wire (`24`).
   static const int noOfBits = 24;

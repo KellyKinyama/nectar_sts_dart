@@ -2,6 +2,13 @@
 /// counted in minutes.
 ///
 /// Mirrors `domain/BaseDate.java` but without Joda-Time.
+///
+/// Example:
+/// ```dart
+/// BaseDate.date1993.shortCode;      // '93'
+/// BaseDate.date1993.year;           // 1993
+/// BaseDate.date1993.dateTime;       // 1993-01-01 00:00:00.000Z
+/// ```
 enum BaseDate {
   date1993('93', 1993),
   date2014('14', 2014),

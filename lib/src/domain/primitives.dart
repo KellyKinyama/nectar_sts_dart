@@ -209,6 +209,17 @@ class SupplyGroupCode implements _Entity {
 ///   - KRN : 1 hex digit  (1..9, decimal printed as-is)
 ///   - then 6 'F' nibbles of padding (the `maximumPhasePowerUnbalanceLimit`
 ///     field, hard-coded to all-ones in the Nectar code).
+///
+/// Example (from `test/dkga_test.dart`):
+/// ```dart
+/// final cb = ControlBlock(
+///   keyType:           KeyType(2),
+///   supplyGroupCode:   SupplyGroupCode('123456'),
+///   tariffIndex:       TariffIndex('07'),
+///   keyRevisionNumber: KeyRevisionNumber(1),
+/// );
+/// cb.value; // '2123456071FFFFFF'
+/// ```
 class ControlBlock implements _Entity {
   /// Key type (drives the DKGA branch).
   final KeyType keyType;
@@ -250,6 +261,26 @@ class ControlBlock implements _Entity {
 /// For KT == 3 (DCTK / common transfer key) the IAIN portion is
 /// replaced by zeros — the meter-specific bits are stripped because the
 /// derived key isn't tied to a single meter.
+///
+/// Example (from `test/dkga_test.dart`):
+/// ```dart
+/// // 6-digit IIN keeps last 5 of IIN + last 11 of IAIN.
+/// final pan = PrimaryAccountNumberBlock(
+///   issuerIdentificationNumber:           IssuerIdentificationNumber('600727'),
+///   individualAccountIdentificationNumber:
+///       IndividualAccountIdentificationNumber('12345678901'),
+///   keyType: KeyType(2),
+/// );
+/// pan.value; // '0072712345678901'
+///
+/// // KT=3 (Common Transfer Key) zeros the IAIN portion.
+/// PrimaryAccountNumberBlock(
+///   issuerIdentificationNumber:           IssuerIdentificationNumber('600727'),
+///   individualAccountIdentificationNumber:
+///       IndividualAccountIdentificationNumber('12345678901'),
+///   keyType: KeyType(3),
+/// ).value; // '0072700000000000'
+/// ```
 class PrimaryAccountNumberBlock implements _Entity {
   /// IIN portion — 6 or 4 digits.
   final IssuerIdentificationNumber issuerIdentificationNumber;
@@ -323,6 +354,16 @@ enum MeterPanValidation { validate, skip }
 ///     `panStr[4..8]`. The DSN is always `panStr[8..16]`, the
 ///     extracted DRN check digit is `panStr[len-2]`, and the PAN
 ///     check digit is `panStr[len-1]`.
+///
+/// Example (from `test/meter_pan_parser_test.dart`):
+/// ```dart
+/// final pan = MeterPrimaryAccountNumber.fromString(
+///   '600727000000000009',
+///   validate: MeterPanValidation.skip,
+/// );
+/// pan.issuerIdentificationNumber.value;           // '600727'
+/// pan.individualAccountIdentificationNumber.value; // '00000000000'
+/// ```
 class MeterPrimaryAccountNumber implements _Entity {
   static const _legacyIin = '600727';
 

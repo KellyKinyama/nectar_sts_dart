@@ -16,6 +16,17 @@ import 'primitives.dart';
 
 /// Full 8-bit Key Expiry Number (KEN). Carried split across two
 /// 4-bit halves on the wire (KENHO + KENLO).
+///
+/// Example:
+/// ```dart
+/// final ken = KeyExpiryNumber(0xA7);
+/// ken.high.value; // 0xA (goes into the 1st Section KCT)
+/// ken.low.value;  // 0x7 (goes into the 2nd Section KCT)
+///
+/// // Reassemble on the meter side.
+/// final rebuilt = KeyExpiryNumber.fromHighAndLow(ken.high, ken.low);
+/// rebuilt.value; // 0xA7
+/// ```
 class KeyExpiryNumber {
   /// Full 8-bit KEN value in `0..255`.
   final int value;
